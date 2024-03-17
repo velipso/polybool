@@ -72,11 +72,11 @@ polybool.intersect({
 ## Basic Usage
 
 ```typescript
-let poly = PolyBool.union(poly1, poly2);
-let poly = PolyBool.intersect(poly1, poly2);
-let poly = PolyBool.difference(poly1, poly2); // poly1 - poly2
-let poly = PolyBool.differenceRev(poly1, poly2); // poly2 - poly1
-let poly = PolyBool.xor(poly1, poly2);
+const poly = polybool.union(poly1, poly2);
+const poly = polybool.intersect(poly1, poly2);
+const poly = polybool.difference(poly1, poly2); // poly1 - poly2
+const poly = polybool.differenceRev(poly1, poly2); // poly2 - poly1
+const poly = polybool.xor(poly1, poly2);
 ```
 
 Where `poly1`, `poly2`, and the return value are Polygon objects, in the format of:
