@@ -1,0 +1,57 @@
+{
+  "name": "polybool",
+  "version": "0.1.0",
+  "description": "Boolean operations on polygons (union, intersection, difference, xor)",
+  "main": "dist/polybool.js",
+  "type": "module",
+  "scripts": {
+    "test": "tsx src/polybool.test.ts",
+    "build": "rollup -c",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "tsc": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/velipso/polybool.git"
+  },
+  "keywords": [
+    "polygon",
+    "union",
+    "intersect",
+    "intersection",
+    "difference",
+    "diff",
+    "xor",
+    "boolean",
+    "clipping",
+    "clip"
+  ],
+  "author": "velipso",
+  "license": "0BSD",
+  "bugs": {
+    "url": "https://github.com/velipso/polybool/issues"
+  },
+  "homepage": "https://github.com/velipso/polybool#readme",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-standard-with-typescript": "^43.0.1",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-promise": "^6.1.1",
+    "prettier": "^3.2.5",
+    "rollup": "^4.13.0",
+    "rollup-plugin-dts": "^6.1.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2"
+  },
+  "dependencies": {
+    "tslib": "^2.6.2"
+  }
+}
