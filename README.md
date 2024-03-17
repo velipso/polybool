@@ -72,6 +72,8 @@ polybool.intersect({
 ## Basic Usage
 
 ```typescript
+import polybool from 'polybool';
+
 const poly = polybool.union(poly1, poly2);
 const poly = polybool.intersect(poly1, poly2);
 const poly = polybool.difference(poly1, poly2); // poly1 - poly2
