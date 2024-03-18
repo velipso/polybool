@@ -42,7 +42,7 @@ directory for a single file build.
 # Example
 
 ```typescript
-import polybool from 'polybool';
+import polybool from '@velipso/polybool';
 
 polybool.intersect({
     regions: [
@@ -72,7 +72,7 @@ polybool.intersect({
 ## Basic Usage
 
 ```typescript
-import polybool from 'polybool';
+import polybool from '@velipso/polybool';
 
 const poly = polybool.union(poly1, poly2);
 const poly = polybool.intersect(poly1, poly2);
@@ -239,7 +239,7 @@ else
 You can set the epsilon value using:
 
 ```typescript
-import { PolyBool, GeometryEpsilon } from 'polybool';
+import { PolyBool, GeometryEpsilon } from '@velipso/polybool';
 
 const polybool = new PolyBool(new GeometryEpsilon(newEpsilonValue));
 ```
