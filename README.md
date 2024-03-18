@@ -67,7 +67,7 @@ polybool.intersect({
 }
 ```
 
-![Example](https://github.com/velipso/polybool/raw/master/example.png)
+![Example](https://github.com/velipso/polybool/raw/main/example.png)
 
 ## Basic Usage
 
@@ -120,7 +120,7 @@ There are three types of objects you will encounter in the core API:
 
 The basic flow chart of the API is:
 
-![API Flow Chart](https://github.com/velipso/polybool/raw/master/flowchart.png)
+![API Flow Chart](https://github.com/velipso/polybool/raw/main/flowchart.png)
 
 You start by converting Polygons to Segments using `polybool.segments(poly)`.
 
