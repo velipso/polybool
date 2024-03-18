@@ -2,9 +2,6 @@
 
 Boolean operations on polygons (union, intersection, difference, xor).
 
-NOTE: This is a port of my [polybooljs](https://github.com/velipso/polybooljs)
-to TypeScript. It still needs testing!
-
 # Features
 
 1. Clips polygons for all boolean operations
@@ -14,9 +11,11 @@ to TypeScript. It still needs testing!
 4. Uses formulas that take floating point irregularities into account (via
    configurable epsilon)
 5. Provides an API for constructing efficient sequences of operations
+6. TypeScript implementation
 
 # Resources
 
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@1.0.0/demo/demo.html)
 * [Companion Tutorial](https://sean.cm/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
