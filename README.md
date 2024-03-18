@@ -34,7 +34,7 @@ Other kind souls have ported this library:
 
 # Installing
 
-`npm install polybool`
+`npm install @velipso/polybool`
 
 Or, for the browser, look in the [`dist/`](https://github.com/velipso/polybool/tree/main/dist)
 directory for a single file build.
