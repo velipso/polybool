@@ -14,10 +14,6 @@ export interface ListTransition<T> {
 export class List<T> {
   readonly nodes: T[] = [];
 
-  exists(node: T) {
-    return this.nodes.includes(node);
-  }
-
   remove(node: T) {
     const i = this.nodes.indexOf(node);
     if (i >= 0) {

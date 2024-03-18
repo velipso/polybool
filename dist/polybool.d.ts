@@ -42,16 +42,50 @@ interface ListTransition<T> {
     insert: (node: T) => T;
 }
 
+declare class BuildLog {
+    list: Array<{
+        type: string;
+        data: unknown;
+    }>;
+    nextSegmentId: number;
+    curVert: number;
+    push(type: string, data: unknown): void;
+    segmentId(): number;
+    checkIntersection(seg1: Segment, seg2: Segment): void;
+    segmentChop(seg: Segment, p: Point): void;
+    statusRemove(seg: Segment): void;
+    segmentUpdate(seg: Segment): void;
+    segmentNew(seg: Segment, primary: boolean): void;
+    tempStatus(seg: Segment, above: Segment | false, below: Segment | false): void;
+    rewind(seg: Segment): void;
+    status(seg: Segment, above: Segment | false, below: Segment | false): void;
+    vert(x: number): void;
+    selected(segs: Segment[]): void;
+    chainStart(seg: Segment): void;
+    chainRemoveHead(index: number, p: Point): void;
+    chainRemoveTail(index: number, p: Point): void;
+    chainNew(p1: Point, p2: Point): void;
+    chainMatch(index: number): void;
+    chainClose(index: number): void;
+    chainAddHead(index: number, p: Point): void;
+    chainAddTail(index: number, p: Point): void;
+    chainConnect(index1: number, index2: number): void;
+    chainReverse(index: number): void;
+    chainJoin(index1: number, index2: number): void;
+    done(): void;
+}
+
 interface Fill {
     above: boolean | null;
     below: boolean | null;
 }
 declare class Segment {
+    id: number;
     start: Point;
     end: Point;
     myFill: Fill;
     otherFill: Fill | null;
-    constructor(start: Point, end: Point, copyMyFill?: Segment);
+    constructor(start: Point, end: Point, copyMyFill: Segment | null, log: BuildLog | null);
 }
 declare class Event {
     isStart: boolean;
@@ -67,7 +101,8 @@ declare class Intersecter {
     private readonly geo;
     private readonly events;
     private readonly status;
-    constructor(selfIntersection: boolean, geo: Geometry);
+    private readonly log;
+    constructor(selfIntersection: boolean, geo: Geometry, log?: BuildLog | null);
     compareEvents(p1_isStart: boolean, p1_1: Point, p1_2: Point, p2_isStart: boolean, p2_1: Point, p2_2: Point): number;
     addEvent(ev: Event): void;
     divideEvent(ev: Event, p: Point): Event;
@@ -81,14 +116,14 @@ declare class Intersecter {
 }
 
 declare class SegmentSelector {
-    static union(segments: Segment[]): Segment[];
-    static intersect(segments: Segment[]): Segment[];
-    static difference(segments: Segment[]): Segment[];
-    static differenceRev(segments: Segment[]): Segment[];
-    static xor(segments: Segment[]): Segment[];
+    static union(segments: Segment[], log: BuildLog | null): Segment[];
+    static intersect(segments: Segment[], log: BuildLog | null): Segment[];
+    static difference(segments: Segment[], log: BuildLog | null): Segment[];
+    static differenceRev(segments: Segment[], log: BuildLog | null): Segment[];
+    static xor(segments: Segment[], log: BuildLog | null): Segment[];
 }
 
-declare function SegmentChainer(segments: Segment[], geo: Geometry): Point[][];
+declare function SegmentChainer(segments: Segment[], geo: Geometry, log: BuildLog | null): Point[][];
 
 interface Polygon {
     regions: Point[][];
@@ -105,7 +140,12 @@ interface CombinedSegments {
 }
 declare class PolyBool {
     private readonly geo;
+    private log;
     constructor(geo: Geometry);
+    buildLog(enable: boolean): {
+        type: string;
+        data: unknown;
+    }[] | undefined;
     segments(poly: Polygon): Segments;
     combine(segments1: Segments, segments2: Segments): CombinedSegments;
     selectUnion(combined: CombinedSegments): Segments;
@@ -122,4 +162,4 @@ declare class PolyBool {
 }
 declare const polybool: PolyBool;
 
-export { type CombinedSegments, Geometry, GeometryEpsilon, Intersecter, type Point, PolyBool, type Polygon, Segment, SegmentChainer, SegmentSelector, type Segments, polybool as default };
+export { BuildLog, type CombinedSegments, Geometry, GeometryEpsilon, Intersecter, type Point, PolyBool, type Polygon, Segment, SegmentChainer, SegmentSelector, type Segments, polybool as default };

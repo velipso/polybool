@@ -9,6 +9,7 @@ import { type Point, type Geometry, GeometryEpsilon } from "./Geometry";
 import { Segment, Intersecter } from "./Intersecter";
 import { SegmentSelector } from "./SegmentSelector";
 import SegmentChainer from "./SegmentChainer";
+import BuildLog from "./BuildLog";
 
 export {
   type Point,
@@ -18,6 +19,7 @@ export {
   Intersecter,
   SegmentSelector,
   SegmentChainer,
+  BuildLog,
 };
 
 export interface Polygon {
@@ -38,13 +40,19 @@ export interface CombinedSegments {
 
 export class PolyBool {
   private readonly geo: Geometry;
+  private log: BuildLog | null = null;
 
   constructor(geo: Geometry) {
     this.geo = geo;
   }
 
+  buildLog(enable: boolean) {
+    this.log = enable ? new BuildLog() : null;
+    return this.log?.list;
+  }
+
   segments(poly: Polygon): Segments {
-    const i = new Intersecter(true, this.geo);
+    const i = new Intersecter(true, this.geo, this.log);
     for (const region of poly.regions) {
       i.addRegion(region);
     }
@@ -55,12 +63,12 @@ export class PolyBool {
   }
 
   combine(segments1: Segments, segments2: Segments): CombinedSegments {
-    const i = new Intersecter(false, this.geo);
+    const i = new Intersecter(false, this.geo, this.log);
     for (const seg of segments1.segments) {
-      i.addSegment(new Segment(seg.start, seg.end, seg), true);
+      i.addSegment(new Segment(seg.start, seg.end, seg, this.log), true);
     }
     for (const seg of segments2.segments) {
-      i.addSegment(new Segment(seg.start, seg.end, seg), false);
+      i.addSegment(new Segment(seg.start, seg.end, seg, this.log), false);
     }
     return {
       combined: i.calculate(segments1.inverted, segments2.inverted),
@@ -71,42 +79,42 @@ export class PolyBool {
 
   selectUnion(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.union(combined.combined),
+      segments: SegmentSelector.union(combined.combined, this.log),
       inverted: combined.inverted1 || combined.inverted2,
     };
   }
 
   selectIntersect(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.intersect(combined.combined),
+      segments: SegmentSelector.intersect(combined.combined, this.log),
       inverted: combined.inverted1 && combined.inverted2,
     };
   }
 
   selectDifference(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.difference(combined.combined),
+      segments: SegmentSelector.difference(combined.combined, this.log),
       inverted: combined.inverted1 && !combined.inverted2,
     };
   }
 
   selectDifferenceRev(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.differenceRev(combined.combined),
+      segments: SegmentSelector.differenceRev(combined.combined, this.log),
       inverted: !combined.inverted1 && combined.inverted2,
     };
   }
 
   selectXor(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.xor(combined.combined),
+      segments: SegmentSelector.xor(combined.combined, this.log),
       inverted: combined.inverted1 !== combined.inverted2,
     };
   }
 
   polygon(segments: Segments): Polygon {
     return {
-      regions: SegmentChainer(segments.segments, this.geo),
+      regions: SegmentChainer(segments.segments, this.geo, this.log),
       inverted: segments.inverted,
     };
   }

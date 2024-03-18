@@ -7,6 +7,7 @@
 
 import { List } from "./List";
 import { type Point, type Geometry, AlongIntersection } from "./Geometry";
+import type BuildLog from "./BuildLog";
 
 interface Fill {
   above: boolean | null;
@@ -14,12 +15,19 @@ interface Fill {
 }
 
 export class Segment {
+  id: number;
   start: Point;
   end: Point;
   myFill: Fill;
   otherFill: Fill | null = null;
 
-  constructor(start: Point, end: Point, copyMyFill?: Segment) {
+  constructor(
+    start: Point,
+    end: Point,
+    copyMyFill: Segment | null,
+    log: BuildLog | null,
+  ) {
+    this.id = log?.segmentId() ?? -1;
     this.start = start;
     this.end = end;
     this.myFill = {
@@ -50,10 +58,16 @@ export class Intersecter {
   private readonly geo: Geometry;
   private readonly events = new List<Event>();
   private readonly status = new List<Event>();
+  private readonly log: BuildLog | null;
 
-  constructor(selfIntersection: boolean, geo: Geometry) {
+  constructor(
+    selfIntersection: boolean,
+    geo: Geometry,
+    log: BuildLog | null = null,
+  ) {
     this.selfIntersection = selfIntersection;
     this.geo = geo;
+    this.log = log;
   }
 
   compareEvents(
@@ -108,10 +122,11 @@ export class Intersecter {
   }
 
   divideEvent(ev: Event, p: Point) {
-    const ns = new Segment(p, ev.seg.end, ev.seg);
+    const ns = new Segment(p, ev.seg.end, ev.seg, this.log);
     // slides an end backwards
     //   (start)------------(end)    to:
     //   (start)---(end)
+    this.log?.segmentChop(ev.seg, p);
     this.events.remove(ev.other);
     ev.seg.end = p;
     ev.other.p = p;
@@ -125,7 +140,9 @@ export class Intersecter {
       // points are equal, so we have a zero-length segment
       return null; // skip it
     }
-    return forward < 0 ? new Segment(p1, p2) : new Segment(p2, p1);
+    return forward < 0
+      ? new Segment(p1, p2, null, this.log)
+      : new Segment(p2, p1, null, this.log);
   }
 
   addSegment(seg: Segment, primary: boolean) {
@@ -180,13 +197,14 @@ export class Intersecter {
 
   checkIntersection(ev1: Event, ev2: Event): Event | null {
     // returns the segment equal to ev1, or null if nothing equal
-
     const seg1 = ev1.seg;
     const seg2 = ev2.seg;
     const a1 = seg1.start;
     const a2 = seg1.end;
     const b1 = seg2.start;
     const b2 = seg2.end;
+
+    this.log?.checkIntersection(seg1, seg2);
 
     const i = this.geo.linesIntersect(a1, a2, b1, b2);
 
@@ -276,10 +294,21 @@ export class Intersecter {
     const segments: Segment[] = [];
     while (!this.events.isEmpty()) {
       const ev = this.events.getHead();
+
+      this.log?.vert(ev.p[0]);
+
       if (ev.isStart) {
+        this.log?.segmentNew(ev.seg, ev.primary);
+
         const surrounding = this.statusFindSurrounding(ev);
         const above = surrounding.before;
         const below = surrounding.after;
+
+        this.log?.tempStatus(
+          ev.seg,
+          above ? above.seg : false,
+          below ? below.seg : false,
+        );
 
         const checkBothIntersections = () => {
           if (above) {
@@ -325,6 +354,8 @@ export class Intersecter {
             eve.seg.otherFill = ev.seg.myFill;
           }
 
+          this.log?.segmentUpdate(eve.seg);
+
           this.events.remove(ev.other);
           this.events.remove(ev);
         }
@@ -332,6 +363,7 @@ export class Intersecter {
         if (this.events.getHead() !== ev) {
           // something was inserted before us in the event queue, so loop back
           // around and process it before continuing
+          this.log?.rewind(ev.seg);
           continue;
         }
 
@@ -400,6 +432,12 @@ export class Intersecter {
           }
         }
 
+        this.log?.status(
+          ev.seg,
+          above ? above.seg : false,
+          below ? below.seg : false,
+        );
+
         // insert the status and remember it for later removal
         ev.other.status = surrounding.insert(ev);
       } else {
@@ -422,6 +460,8 @@ export class Intersecter {
           this.checkIntersection(before, after);
         }
 
+        this.log?.statusRemove(st.seg);
+
         // remove the status
         this.status.remove(st);
 
@@ -443,6 +483,8 @@ export class Intersecter {
       // remove the event and continue
       this.events.removeHead();
     }
+
+    this.log?.done();
 
     return segments;
   }

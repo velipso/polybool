@@ -7,13 +7,18 @@
 
 import { type Point, type Geometry } from "./Geometry";
 import { type Segment } from "./Intersecter";
+import type BuildLog from "./BuildLog";
 
 //
 // converts a list of segments into a list of regions, while also removing
 // unnecessary verticies
 //
 
-export default function SegmentChainer(segments: Segment[], geo: Geometry) {
+export default function SegmentChainer(
+  segments: Segment[],
+  geo: Geometry,
+  log: BuildLog | null,
+) {
   const chains: Point[][] = [];
   const regions: Point[][] = [];
 
@@ -28,6 +33,8 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
       continue;
     }
 
+    log?.chainStart(seg);
+
     // search for two chains that this segment matches
     const first_match = {
       index: 0,
@@ -39,20 +46,23 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
       matches_head: false,
       matches_pt1: false,
     };
-    let next_match = first_match;
+    let next_match: typeof first_match | null = first_match;
     function setMatch(
       index: number,
       matches_head: boolean,
       matches_pt1: boolean,
     ) {
       // return true if we've matched twice
-      next_match.index = index;
-      next_match.matches_head = matches_head;
-      next_match.matches_pt1 = matches_pt1;
+      if (next_match) {
+        next_match.index = index;
+        next_match.matches_head = matches_head;
+        next_match.matches_pt1 = matches_pt1;
+      }
       if (next_match === first_match) {
         next_match = second_match;
         return false;
       }
+      next_match = null;
       return true; // we've matched twice, we're done here
     }
     for (let i = 0; i < chains.length; i++) {
@@ -81,11 +91,14 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
     if (next_match === first_match) {
       // we didn't match anything, so create a new chain
       chains.push([pt1, pt2]);
+      log?.chainNew(pt1, pt2);
       continue;
     }
 
     if (next_match === second_match) {
       // we matched a single chain
+
+      log?.chainMatch(first_match.index);
 
       // add the other point to the apporpriate end, and check to see if we've closed the
       // chain into a loop
@@ -104,8 +117,10 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
         // grow isn't needed because it's directly between grow2 and pt:
         // grow2 ---grow---> pt
         if (addToHead) {
+          log?.chainRemoveHead(first_match.index, pt);
           chain.shift();
         } else {
+          log?.chainRemoveTail(first_match.index, pt);
           chain.pop();
         }
         grow = grow2; // old grow is gone... new grow is what grow2 was
@@ -119,11 +134,15 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
           // oppo isn't needed because it's directly between oppo2 and grow:
           // oppo2 ---oppo--->grow
           if (addToHead) {
+            log?.chainRemoveTail(first_match.index, grow);
             chain.pop();
           } else {
+            log?.chainRemoveHead(first_match.index, grow);
             chain.shift();
           }
         }
+
+        log?.chainClose(first_match.index);
 
         // we have a closed chain!
         regions.push(chain);
@@ -132,8 +151,10 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
 
       // not closing a loop, so just add it to the apporpriate side
       if (addToHead) {
+        log?.chainAddHead(first_match.index, pt);
         chain.unshift(pt);
       } else {
+        log?.chainAddTail(first_match.index, pt);
         chain.push(pt);
       }
       continue;
@@ -142,6 +163,7 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
     // otherwise, we matched two chains, so we need to combine those chains together
 
     function reverseChain(index: number) {
+      log?.chainReverse(index);
       chains[index].reverse(); // gee, that's easy
     }
 
@@ -157,6 +179,7 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
       if (geo.pointsCollinear(tail2, tail, head)) {
         // tail isn't needed because it's directly between tail2 and head
         // tail2 ---tail---> head
+        log?.chainRemoveTail(index1, tail);
         chain1.pop();
         tail = tail2; // old tail is gone... new tail is what tail2 was
       }
@@ -164,15 +187,19 @@ export default function SegmentChainer(segments: Segment[], geo: Geometry) {
       if (geo.pointsCollinear(tail, head, head2)) {
         // head isn't needed because it's directly between tail and head2
         // tail ---head---> head2
+        log?.chainRemoveHead(index2, head);
         chain2.shift();
       }
 
+      log?.chainJoin(index1, index2);
       chains[index1] = chain1.concat(chain2);
       chains.splice(index2, 1);
     }
 
     const F = first_match.index;
     const S = second_match.index;
+
+    log?.chainConnect(F, S);
 
     const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
     if (first_match.matches_head) {

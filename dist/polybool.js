@@ -132,9 +132,6 @@ class List {
     constructor() {
         this.nodes = [];
     }
-    exists(node) {
-        return this.nodes.includes(node);
-    }
     remove(node) {
         const i = this.nodes.indexOf(node);
         if (i >= 0) {
@@ -189,8 +186,10 @@ class List {
 // SPDX-License-Identifier: 0BSD
 //
 class Segment {
-    constructor(start, end, copyMyFill) {
+    constructor(start, end, copyMyFill, log) {
+        var _a;
         this.otherFill = null;
+        this.id = (_a = log === null || log === void 0 ? void 0 : log.segmentId()) !== null && _a !== void 0 ? _a : -1;
         this.start = start;
         this.end = end;
         this.myFill = {
@@ -209,11 +208,12 @@ class Event {
     }
 }
 class Intersecter {
-    constructor(selfIntersection, geo) {
+    constructor(selfIntersection, geo, log = null) {
         this.events = new List();
         this.status = new List();
         this.selfIntersection = selfIntersection;
         this.geo = geo;
+        this.log = log;
     }
     compareEvents(p1_isStart, p1_1, p1_2, p2_isStart, p2_1, p2_2) {
         // compare the selected points first
@@ -245,10 +245,12 @@ class Intersecter {
         });
     }
     divideEvent(ev, p) {
-        const ns = new Segment(p, ev.seg.end, ev.seg);
+        var _a;
+        const ns = new Segment(p, ev.seg.end, ev.seg, this.log);
         // slides an end backwards
         //   (start)------------(end)    to:
         //   (start)---(end)
+        (_a = this.log) === null || _a === void 0 ? void 0 : _a.segmentChop(ev.seg, p);
         this.events.remove(ev.other);
         ev.seg.end = p;
         ev.other.p = p;
@@ -261,7 +263,9 @@ class Intersecter {
             // points are equal, so we have a zero-length segment
             return null; // skip it
         }
-        return forward < 0 ? new Segment(p1, p2) : new Segment(p2, p1);
+        return forward < 0
+            ? new Segment(p1, p2, null, this.log)
+            : new Segment(p2, p1, null, this.log);
     }
     addSegment(seg, primary) {
         const evStart = new Event(true, seg.start, seg, primary);
@@ -309,6 +313,7 @@ class Intersecter {
         });
     }
     checkIntersection(ev1, ev2) {
+        var _a;
         // returns the segment equal to ev1, or null if nothing equal
         const seg1 = ev1.seg;
         const seg2 = ev2.seg;
@@ -316,6 +321,7 @@ class Intersecter {
         const a2 = seg1.end;
         const b1 = seg2.start;
         const b2 = seg2.end;
+        (_a = this.log) === null || _a === void 0 ? void 0 : _a.checkIntersection(seg1, seg2);
         const i = this.geo.linesIntersect(a1, a2, b1, b2);
         if (i === null) {
             // segments are parallel or coincident
@@ -398,13 +404,17 @@ class Intersecter {
         return null;
     }
     calculate(primaryPolyInverted, secondaryPolyInverted) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         const segments = [];
         while (!this.events.isEmpty()) {
             const ev = this.events.getHead();
+            (_a = this.log) === null || _a === void 0 ? void 0 : _a.vert(ev.p[0]);
             if (ev.isStart) {
+                (_b = this.log) === null || _b === void 0 ? void 0 : _b.segmentNew(ev.seg, ev.primary);
                 const surrounding = this.statusFindSurrounding(ev);
                 const above = surrounding.before;
                 const below = surrounding.after;
+                (_c = this.log) === null || _c === void 0 ? void 0 : _c.tempStatus(ev.seg, above ? above.seg : false, below ? below.seg : false);
                 const checkBothIntersections = () => {
                     if (above) {
                         const eve = this.checkIntersection(ev, above);
@@ -446,12 +456,14 @@ class Intersecter {
                         // because we are guaranteed that all self-intersections are gone
                         eve.seg.otherFill = ev.seg.myFill;
                     }
+                    (_d = this.log) === null || _d === void 0 ? void 0 : _d.segmentUpdate(eve.seg);
                     this.events.remove(ev.other);
                     this.events.remove(ev);
                 }
                 if (this.events.getHead() !== ev) {
                     // something was inserted before us in the event queue, so loop back
                     // around and process it before continuing
+                    (_e = this.log) === null || _e === void 0 ? void 0 : _e.rewind(ev.seg);
                     continue;
                 }
                 //
@@ -521,6 +533,7 @@ class Intersecter {
                         };
                     }
                 }
+                (_f = this.log) === null || _f === void 0 ? void 0 : _f.status(ev.seg, above ? above.seg : false, below ? below.seg : false);
                 // insert the status and remember it for later removal
                 ev.other.status = surrounding.insert(ev);
             }
@@ -539,6 +552,7 @@ class Intersecter {
                     const after = this.status.nodes[i + 1];
                     this.checkIntersection(before, after);
                 }
+                (_g = this.log) === null || _g === void 0 ? void 0 : _g.statusRemove(st.seg);
                 // remove the status
                 this.status.remove(st);
                 // if we've reached this point, we've calculated everything there is to
@@ -558,6 +572,7 @@ class Intersecter {
             // remove the event and continue
             this.events.removeHead();
         }
+        (_h = this.log) === null || _h === void 0 ? void 0 : _h.done();
         return segments;
     }
 }
@@ -571,7 +586,7 @@ class Intersecter {
 //
 // filter a list of segments based on boolean operations
 //
-function select(segments, selection) {
+function select(segments, selection, log) {
     const result = [];
     for (const seg of segments) {
         const index = (seg.myFill.above ? 8 : 0) +
@@ -580,16 +595,17 @@ function select(segments, selection) {
             (seg.otherFill && seg.otherFill.below ? 1 : 0);
         if (selection[index] !== 0) {
             // copy the segment to the results, while also calculating the fill status
-            const keep = new Segment(seg.start, seg.end);
+            const keep = new Segment(seg.start, seg.end, null, log);
             keep.myFill.above = selection[index] === 1; // 1 if filled above
             keep.myFill.below = selection[index] === 2; // 2 if filled below
             result.push(keep);
         }
     }
+    log === null || log === void 0 ? void 0 : log.selected(result);
     return result;
 }
 class SegmentSelector {
-    static union(segments) {
+    static union(segments, log) {
         // primary | secondary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
@@ -608,9 +624,9 @@ class SegmentSelector {
         //    1      1      0      1   =>   no                  0
         //    1      1      1      0   =>   no                  0
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 2, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0]);
+        return select(segments, [0, 2, 1, 0, 2, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0], log);
     }
-    static intersect(segments) {
+    static intersect(segments, log) {
         // primary & secondary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
@@ -629,9 +645,9 @@ class SegmentSelector {
         //    1      1      0      1   =>   yes filled below    2
         //    1      1      1      0   =>   yes filled above    1
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 1, 1, 0, 2, 1, 0]);
+        return select(segments, [0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 1, 1, 0, 2, 1, 0], log);
     }
-    static difference(segments) {
+    static difference(segments, log) {
         // primary - secondary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
@@ -650,9 +666,9 @@ class SegmentSelector {
         //    1      1      0      1   =>   yes filled above    1
         //    1      1      1      0   =>   yes filled below    2
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 0, 0, 0, 2, 0, 2, 0, 1, 1, 0, 0, 0, 1, 2, 0]);
+        return select(segments, [0, 0, 0, 0, 2, 0, 2, 0, 1, 1, 0, 0, 0, 1, 2, 0], log);
     }
-    static differenceRev(segments) {
+    static differenceRev(segments, log) {
         // secondary - primary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
@@ -671,9 +687,9 @@ class SegmentSelector {
         //    1      1      0      1   =>   no                  0
         //    1      1      1      0   =>   no                  0
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 0, 0, 1, 1, 0, 2, 0, 2, 0, 0, 0, 0]);
+        return select(segments, [0, 2, 1, 0, 0, 0, 1, 1, 0, 2, 0, 2, 0, 0, 0, 0], log);
     }
-    static xor(segments) {
+    static xor(segments, log) {
         // primary ^ secondary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
@@ -692,7 +708,7 @@ class SegmentSelector {
         //    1      1      0      1   =>   yes filled above    1
         //    1      1      1      0   =>   yes filled below    2
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 2, 0, 0, 1, 1, 0, 0, 2, 0, 1, 2, 0]);
+        return select(segments, [0, 2, 1, 0, 2, 0, 0, 1, 1, 0, 0, 2, 0, 1, 2, 0], log);
     }
 }
 
@@ -706,7 +722,7 @@ class SegmentSelector {
 // converts a list of segments into a list of regions, while also removing
 // unnecessary verticies
 //
-function SegmentChainer(segments, geo) {
+function SegmentChainer(segments, geo, log) {
     const chains = [];
     const regions = [];
     for (const seg of segments) {
@@ -717,6 +733,7 @@ function SegmentChainer(segments, geo) {
                 "probably too small or too large");
             continue;
         }
+        log === null || log === void 0 ? void 0 : log.chainStart(seg);
         // search for two chains that this segment matches
         const first_match = {
             index: 0,
@@ -731,13 +748,16 @@ function SegmentChainer(segments, geo) {
         let next_match = first_match;
         function setMatch(index, matches_head, matches_pt1) {
             // return true if we've matched twice
-            next_match.index = index;
-            next_match.matches_head = matches_head;
-            next_match.matches_pt1 = matches_pt1;
+            if (next_match) {
+                next_match.index = index;
+                next_match.matches_head = matches_head;
+                next_match.matches_pt1 = matches_pt1;
+            }
             if (next_match === first_match) {
                 next_match = second_match;
                 return false;
             }
+            next_match = null;
             return true; // we've matched twice, we're done here
         }
         for (let i = 0; i < chains.length; i++) {
@@ -768,10 +788,12 @@ function SegmentChainer(segments, geo) {
         if (next_match === first_match) {
             // we didn't match anything, so create a new chain
             chains.push([pt1, pt2]);
+            log === null || log === void 0 ? void 0 : log.chainNew(pt1, pt2);
             continue;
         }
         if (next_match === second_match) {
             // we matched a single chain
+            log === null || log === void 0 ? void 0 : log.chainMatch(first_match.index);
             // add the other point to the apporpriate end, and check to see if we've closed the
             // chain into a loop
             const index = first_match.index;
@@ -786,9 +808,11 @@ function SegmentChainer(segments, geo) {
                 // grow isn't needed because it's directly between grow2 and pt:
                 // grow2 ---grow---> pt
                 if (addToHead) {
+                    log === null || log === void 0 ? void 0 : log.chainRemoveHead(first_match.index, pt);
                     chain.shift();
                 }
                 else {
+                    log === null || log === void 0 ? void 0 : log.chainRemoveTail(first_match.index, pt);
                     chain.pop();
                 }
                 grow = grow2; // old grow is gone... new grow is what grow2 was
@@ -800,27 +824,33 @@ function SegmentChainer(segments, geo) {
                     // oppo isn't needed because it's directly between oppo2 and grow:
                     // oppo2 ---oppo--->grow
                     if (addToHead) {
+                        log === null || log === void 0 ? void 0 : log.chainRemoveTail(first_match.index, grow);
                         chain.pop();
                     }
                     else {
+                        log === null || log === void 0 ? void 0 : log.chainRemoveHead(first_match.index, grow);
                         chain.shift();
                     }
                 }
+                log === null || log === void 0 ? void 0 : log.chainClose(first_match.index);
                 // we have a closed chain!
                 regions.push(chain);
                 continue;
             }
             // not closing a loop, so just add it to the apporpriate side
             if (addToHead) {
+                log === null || log === void 0 ? void 0 : log.chainAddHead(first_match.index, pt);
                 chain.unshift(pt);
             }
             else {
+                log === null || log === void 0 ? void 0 : log.chainAddTail(first_match.index, pt);
                 chain.push(pt);
             }
             continue;
         }
         // otherwise, we matched two chains, so we need to combine those chains together
         function reverseChain(index) {
+            log === null || log === void 0 ? void 0 : log.chainReverse(index);
             chains[index].reverse(); // gee, that's easy
         }
         function appendChain(index1, index2) {
@@ -834,19 +864,23 @@ function SegmentChainer(segments, geo) {
             if (geo.pointsCollinear(tail2, tail, head)) {
                 // tail isn't needed because it's directly between tail2 and head
                 // tail2 ---tail---> head
+                log === null || log === void 0 ? void 0 : log.chainRemoveTail(index1, tail);
                 chain1.pop();
                 tail = tail2; // old tail is gone... new tail is what tail2 was
             }
             if (geo.pointsCollinear(tail, head, head2)) {
                 // head isn't needed because it's directly between tail and head2
                 // tail ---head---> head2
+                log === null || log === void 0 ? void 0 : log.chainRemoveHead(index2, head);
                 chain2.shift();
             }
+            log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2);
             chains[index1] = chain1.concat(chain2);
             chains.splice(index2, 1);
         }
         const F = first_match.index;
         const S = second_match.index;
+        log === null || log === void 0 ? void 0 : log.chainConnect(F, S);
         const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
         if (first_match.matches_head) {
             if (second_match.matches_head) {
@@ -901,12 +935,111 @@ function SegmentChainer(segments, geo) {
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //
+class BuildLog {
+    constructor() {
+        this.list = [];
+        this.nextSegmentId = 0;
+        this.curVert = NaN;
+    }
+    push(type, data) {
+        this.list.push({
+            type,
+            data: JSON.parse(JSON.stringify(data)),
+        });
+    }
+    segmentId() {
+        return this.nextSegmentId++;
+    }
+    checkIntersection(seg1, seg2) {
+        this.push("check", { seg1, seg2 });
+    }
+    segmentChop(seg, p) {
+        this.push("div_seg", { seg, p });
+        this.push("chop", { seg, p });
+    }
+    statusRemove(seg) {
+        this.push("pop_seg", { seg });
+    }
+    segmentUpdate(seg) {
+        this.push("seg_update", { seg });
+    }
+    segmentNew(seg, primary) {
+        this.push("new_seg", { seg, primary });
+    }
+    tempStatus(seg, above, below) {
+        this.push("temp_status", { seg, above, below });
+    }
+    rewind(seg) {
+        this.push("rewind", { seg });
+    }
+    status(seg, above, below) {
+        this.push("status", { seg, above, below });
+    }
+    vert(x) {
+        if (x !== this.curVert) {
+            this.push("vert", { x });
+            this.curVert = x;
+        }
+    }
+    selected(segs) {
+        this.push("selected", { segs });
+    }
+    chainStart(seg) {
+        this.push("chain_start", { seg });
+    }
+    chainRemoveHead(index, p) {
+        this.push("chain_rem_head", { index, p });
+    }
+    chainRemoveTail(index, p) {
+        this.push("chain_rem_tail", { index, p });
+    }
+    chainNew(p1, p2) {
+        this.push("chain_new", { p1, p2 });
+    }
+    chainMatch(index) {
+        this.push("chain_match", { index });
+    }
+    chainClose(index) {
+        this.push("chain_close", { index });
+    }
+    chainAddHead(index, p) {
+        this.push("chain_add_head", { index, p });
+    }
+    chainAddTail(index, p) {
+        this.push("chain_add_tail", { index, p });
+    }
+    chainConnect(index1, index2) {
+        this.push("chain_con", { index1, index2 });
+    }
+    chainReverse(index) {
+        this.push("chain_rev", { index });
+    }
+    chainJoin(index1, index2) {
+        this.push("chain_join", { index1, index2 });
+    }
+    done() {
+        this.push("done", null);
+    }
+}
+
+//
+// polybool - Boolean operations on polygons (union, intersection, etc)
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/polybool
+// SPDX-License-Identifier: 0BSD
+//
 class PolyBool {
     constructor(geo) {
+        this.log = null;
         this.geo = geo;
     }
+    buildLog(enable) {
+        var _a;
+        this.log = enable ? new BuildLog() : null;
+        return (_a = this.log) === null || _a === void 0 ? void 0 : _a.list;
+    }
     segments(poly) {
-        const i = new Intersecter(true, this.geo);
+        const i = new Intersecter(true, this.geo, this.log);
         for (const region of poly.regions) {
             i.addRegion(region);
         }
@@ -916,12 +1049,12 @@ class PolyBool {
         };
     }
     combine(segments1, segments2) {
-        const i = new Intersecter(false, this.geo);
+        const i = new Intersecter(false, this.geo, this.log);
         for (const seg of segments1.segments) {
-            i.addSegment(new Segment(seg.start, seg.end, seg), true);
+            i.addSegment(new Segment(seg.start, seg.end, seg, this.log), true);
         }
         for (const seg of segments2.segments) {
-            i.addSegment(new Segment(seg.start, seg.end, seg), false);
+            i.addSegment(new Segment(seg.start, seg.end, seg, this.log), false);
         }
         return {
             combined: i.calculate(segments1.inverted, segments2.inverted),
@@ -931,37 +1064,37 @@ class PolyBool {
     }
     selectUnion(combined) {
         return {
-            segments: SegmentSelector.union(combined.combined),
+            segments: SegmentSelector.union(combined.combined, this.log),
             inverted: combined.inverted1 || combined.inverted2,
         };
     }
     selectIntersect(combined) {
         return {
-            segments: SegmentSelector.intersect(combined.combined),
+            segments: SegmentSelector.intersect(combined.combined, this.log),
             inverted: combined.inverted1 && combined.inverted2,
         };
     }
     selectDifference(combined) {
         return {
-            segments: SegmentSelector.difference(combined.combined),
+            segments: SegmentSelector.difference(combined.combined, this.log),
             inverted: combined.inverted1 && !combined.inverted2,
         };
     }
     selectDifferenceRev(combined) {
         return {
-            segments: SegmentSelector.differenceRev(combined.combined),
+            segments: SegmentSelector.differenceRev(combined.combined, this.log),
             inverted: !combined.inverted1 && combined.inverted2,
         };
     }
     selectXor(combined) {
         return {
-            segments: SegmentSelector.xor(combined.combined),
+            segments: SegmentSelector.xor(combined.combined, this.log),
             inverted: combined.inverted1 !== combined.inverted2,
         };
     }
     polygon(segments) {
         return {
-            regions: SegmentChainer(segments.segments, this.geo),
+            regions: SegmentChainer(segments.segments, this.geo, this.log),
             inverted: segments.inverted,
         };
     }
@@ -1004,4 +1137,4 @@ class PolyBool {
 }
 const polybool = new PolyBool(new GeometryEpsilon());
 
-export { GeometryEpsilon, Intersecter, PolyBool, Segment, SegmentChainer, SegmentSelector, polybool as default };
+export { BuildLog, GeometryEpsilon, Intersecter, PolyBool, Segment, SegmentChainer, SegmentSelector, polybool as default };

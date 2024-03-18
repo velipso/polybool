@@ -2,16 +2,17 @@
 
 Boolean operations on polygons (union, intersection, difference, xor).
 
-NOTE: This is a port of my [polybooljs](https://github.com/velipso/polybooljs) to TypeScript.
-It still needs testing!
+NOTE: This is a port of my [polybooljs](https://github.com/velipso/polybooljs)
+to TypeScript. It still needs testing!
 
 # Features
 
 1. Clips polygons for all boolean operations
 2. Removes unnecessary vertices
-3. Handles segments that are coincident (overlap perfectly, share vertices, one inside the other,
-   etc)
-4. Uses formulas that take floating point irregularities into account (via configurable epsilon)
+3. Handles segments that are coincident (overlap perfectly, share vertices, one
+   inside the other, etc)
+4. Uses formulas that take floating point irregularities into account (via
+   configurable epsilon)
 5. Provides an API for constructing efficient sequences of operations
 
 # Resources
@@ -108,9 +109,9 @@ const segments = polybool.selectXor(combined);
 const polygon  = polybool.polygon(segments);
 ```
 
-Depending on your needs, it might be more efficient to construct your own sequence of operations
-using the lower-level API.  Note that `polybool.union`, `polybool.intersect`, etc, are just thin
-wrappers for convenience.
+Depending on your needs, it might be more efficient to construct your own
+sequence of operations using the lower-level API.  Note that `polybool.union`,
+`polybool.intersect`, etc, are just thin wrappers for convenience.
 
 There are three types of objects you will encounter in the core API:
 
@@ -126,18 +127,21 @@ You start by converting Polygons to Segments using `polybool.segments(poly)`.
 
 You convert Segments to Combined Segments using `polybool.combine(seg1, seg2)`.
 
-You select the resulting Segments from the Combined Segments using one of the selection operators
-`polybool.selectUnion(combined)`, `polybool.selectIntersect(combined)`, etc.  These selection
-functions return Segments.
+You select the resulting Segments from the Combined Segments using one of the
+selection operators `polybool.selectUnion(combined)`,
+`polybool.selectIntersect(combined)`, etc.  These selection functions return
+Segments.
 
-Once you're done, you convert the Segments back to Polygons using `polybool.polygon(segments)`.
+Once you're done, you convert the Segments back to Polygons using
+`polybool.polygon(segments)`.
 
-Each transition is costly, so you want to navigate wisely.  The selection transition is the least
-costly.
+Each transition is costly, so you want to navigate wisely.  The selection
+transition is the least costly.
 
 ## Advanced Example 1
 
-Suppose you wanted to union a list of polygons together.  The naive way to do it would be:
+Suppose you wanted to union a list of polygons together.  The naive way to do it
+would be:
 
 ```typescript
 // works but not efficient
@@ -162,7 +166,8 @@ return polybool.polygon(segments);
 
 ## Advanced Example 2
 
-Suppose you want to calculate all operations on two polygons.  The naive way to do it would be:
+Suppose you want to calculate all operations on two polygons.  The naive way to
+do it would be:
 
 ```typescript
 // works but not efficient
@@ -193,11 +198,11 @@ return {
 
 ## Advanced Example 3
 
-As an added bonus, just going from Polygon to Segments and back performs simplification on the
-polygon.
+As an added bonus, just going from Polygon to Segments and back performs
+simplification on the polygon.
 
-Suppose you have garbage polygon data and just want to clean it up.  The naive way to do it would
-be:
+Suppose you have garbage polygon data and just want to clean it up.  The naive
+way to do it would be:
 
 ```typescript
 // union the polygon with nothing in order to clean up the data
@@ -214,9 +219,9 @@ const cleaned = polybool.polygon(polybool.segments(polygon));
 
 # Epsilon
 
-Due to the beauty of floating point reality, floating point calculations are not exactly perfect.
-This is a problem when trying to detect whether lines are on top of each other, or if vertices are
-exactly the same.
+Due to the beauty of floating point reality, floating point calculations are not
+exactly perfect. This is a problem when trying to detect whether lines are on
+top of each other, or if vertices are exactly the same.
 
 Normally you would expect this to work:
 
@@ -246,10 +251,12 @@ const polybool = new PolyBool(new GeometryEpsilon(newEpsilonValue));
 
 The default epsilon value is `0.0000000001`.
 
-If your polygons are really really large or really really tiny, then you will probably have to come
-up with your own epsilon value -- otherwise, the default should be fine.
+If your polygons are really really large or really really tiny, then you will
+probably have to come up with your own epsilon value -- otherwise, the default
+should be fine.
 
-If `PolyBool` detects that your epsilon is too small or too large, it will throw an error:
+If `PolyBool` detects that your epsilon is too small or too large, it will throw
+an error:
 
 ```
 PolyBool: Zero-length segment detected; your epsilon is probably too small or too large
