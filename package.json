@@ -1,12 +1,19 @@
 {
   "name": "@velipso/polybool",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Boolean operations on polygons (union, intersection, difference, xor)",
-  "main": "dist/polybool.js",
+  "main": "dist/polybool.cjs",
+  "module": "dist/polybool.js",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/polybool.js",
+      "require": "./dist/polybool.cjs.js"
+    }
+  },
   "scripts": {
     "test": "tsx src/polybool.test.ts",
-    "build": "rollup -c",
+    "build": "rollup -c && rollup -c rollup.config.cjs.js",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
     "tsc": "tsc"

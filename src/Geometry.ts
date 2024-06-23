@@ -1,6 +1,6 @@
 //
 // polybool - Boolean operations on polygons (union, intersection, etc)
-// by Sean Connelly (@velipso), https://sean.cm
+// by Sean Connelly (@velipso), https://sean.fun
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //

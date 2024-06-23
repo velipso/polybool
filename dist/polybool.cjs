@@ -1,3 +1,7 @@
+'use strict';
+
+Object.defineProperty(exports, '__esModule', { value: true });
+
 //
 // polybool - Boolean operations on polygons (union, intersection, etc)
 // by Sean Connelly (@velipso), https://sean.fun
@@ -1137,4 +1141,11 @@ class PolyBool {
 }
 const polybool = new PolyBool(new GeometryEpsilon());
 
-export { BuildLog, GeometryEpsilon, Intersecter, PolyBool, Segment, SegmentChainer, SegmentSelector, polybool as default };
+exports.BuildLog = BuildLog;
+exports.GeometryEpsilon = GeometryEpsilon;
+exports.Intersecter = Intersecter;
+exports.PolyBool = PolyBool;
+exports.Segment = Segment;
+exports.SegmentChainer = SegmentChainer;
+exports.SegmentSelector = SegmentSelector;
+exports.default = polybool;
