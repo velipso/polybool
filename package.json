@@ -1,6 +1,6 @@
 {
   "name": "@velipso/polybool",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Boolean operations on polygons (union, intersection, difference, xor)",
   "main": "dist/polybool.cjs",
   "module": "dist/polybool.js",
@@ -9,7 +9,7 @@
   "exports": {
     ".": {
       "import": "./dist/polybool.js",
-      "require": "./dist/polybool.cjs.js"
+      "require": "./dist/polybool.cjs"
     }
   },
   "scripts": {
