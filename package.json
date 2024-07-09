@@ -4,6 +4,7 @@
   "description": "Boolean operations on polygons (union, intersection, difference, xor)",
   "main": "dist/polybool.cjs",
   "module": "dist/polybool.js",
+  "types": "dist/polybool.d.ts",
   "type": "module",
   "exports": {
     ".": {
