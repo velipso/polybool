@@ -8,69 +8,58 @@ Object.defineProperty(exports, '__esModule', { value: true });
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //
-var AlongIntersection;
-(function (AlongIntersection) {
-    AlongIntersection[AlongIntersection["BeforeStart"] = 0] = "BeforeStart";
-    AlongIntersection[AlongIntersection["EqualStart"] = 1] = "EqualStart";
-    AlongIntersection[AlongIntersection["BetweenStartAndEnd"] = 2] = "BetweenStartAndEnd";
-    AlongIntersection[AlongIntersection["EqualEnd"] = 3] = "EqualEnd";
-    AlongIntersection[AlongIntersection["AfterEnd"] = 4] = "AfterEnd";
-})(AlongIntersection || (AlongIntersection = {}));
+function lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+function lerpVec2(a, b, t) {
+    return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+}
+function boundingBoxesIntersect(bbox1, bbox2) {
+    const [b1min, b1max] = bbox1;
+    const [b2min, b2max] = bbox2;
+    return !(b1min[0] > b2max[0] ||
+        b1max[0] < b2min[0] ||
+        b1min[1] > b2max[1] ||
+        b1max[1] < b2min[1]);
+}
 class Geometry {
-    pointsSame(p1, p2) {
-        return this.pointsSameX(p1, p2) && this.pointsSameY(p1, p2);
-    }
-    pointsCompare(p1, p2) {
-        // returns -1 if p1 is smaller, 1 if p2 is smaller, 0 if equal
-        if (this.pointsSameX(p1, p2)) {
-            return this.pointsSameY(p1, p2) ? 0 : p1[1] < p2[1] ? -1 : 1;
-        }
-        return p1[0] < p2[0] ? -1 : 1;
-    }
 }
 class GeometryEpsilon extends Geometry {
     constructor(epsilon = 0.0000000001) {
         super();
         this.epsilon = epsilon;
     }
-    pointAboveOrOnLine(p, left, right) {
-        const Ax = left[0];
-        const Ay = left[1];
-        const Bx = right[0];
-        const By = right[1];
-        const Cx = p[0];
-        const Cy = p[1];
-        return (Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax) >= -this.epsilon;
-    }
-    pointBetween(p, left, right) {
-        // p must be collinear with left->right
-        // returns false if p == left, p == right, or left == right
-        const d_py_ly = p[1] - left[1];
-        const d_rx_lx = right[0] - left[0];
-        const d_px_lx = p[0] - left[0];
-        const d_ry_ly = right[1] - left[1];
-        const dot = d_px_lx * d_rx_lx + d_py_ly * d_ry_ly;
-        // if `dot` is 0, then `p` == `left` or `left` == `right` (reject)
-        // if `dot` is less than 0, then `p` is to the left of `left` (reject)
-        if (dot < this.epsilon) {
-            return false;
+    snap0(v) {
+        if (Math.abs(v) < this.epsilon) {
+            return 0;
         }
-        const sqlen = d_rx_lx * d_rx_lx + d_ry_ly * d_ry_ly;
-        // if `dot` > `sqlen`, then `p` is to the right of `right` (reject)
-        // therefore, if `dot - sqlen` is greater than 0, then `p` is to the right
-        // of `right` (reject)
-        if (dot - sqlen > -this.epsilon) {
-            return false;
+        return v;
+    }
+    snap01(v) {
+        if (Math.abs(v) < this.epsilon) {
+            return 0;
         }
-        return true;
+        if (Math.abs(1 - v) < this.epsilon) {
+            return 1;
+        }
+        return v;
     }
-    pointsSameX(p1, p2) {
-        return Math.abs(p1[0] - p2[0]) < this.epsilon;
+    atan2deg(dy, dx) {
+        if (Math.abs(dy) < this.epsilon) {
+            return dx > 0 || Math.abs(dx) < this.epsilon ? 0 : 180;
+        }
+        else if (Math.abs(dx) < this.epsilon) {
+            return dy < 0 ? 270 : 90;
+        }
+        else if (Math.abs(dx - dy) < this.epsilon) {
+            return dx < 0 ? 225 : 45;
+        }
+        else if (Math.abs(dx + dy) < this.epsilon) {
+            return dx < 0 ? 315 : 135;
+        }
+        return ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
     }
-    pointsSameY(p1, p2) {
-        return Math.abs(p1[1] - p2[1]) < this.epsilon;
-    }
-    pointsCollinear(p1, p2, p3) {
+    isCollinear(p1, p2, p3) {
         // does pt1->pt2->pt3 make a straight line?
         // essentially this is just checking to see if
         //   slope(pt1->pt2) === slope(pt2->pt3)
@@ -81,48 +70,81 @@ class GeometryEpsilon extends Geometry {
         const dy2 = p2[1] - p3[1];
         return Math.abs(dx1 * dy2 - dx2 * dy1) < this.epsilon;
     }
-    linesIntersect(aStart, aEnd, bStart, bEnd) {
-        // returns null if the lines are coincident (e.g., parallel or on top of
-        // each other)
-        //
-        // returns an object if the lines intersect:
-        //   {
-        //     p: [x, y],    where the intersection point is at
-        //     alongA: where intersection point is along A,
-        //     alongB: where intersection point is along B
-        //   }
-        //
-        // alongA and alongB will each be one of AlongIntersection, depending on
-        // where the intersection point is along the A and B lines
-        //
-        const adx = aEnd[0] - aStart[0];
-        const ady = aEnd[1] - aStart[1];
-        const bdx = bEnd[0] - bStart[0];
-        const bdy = bEnd[1] - bStart[1];
-        const axb = adx * bdy - ady * bdx;
-        if (Math.abs(axb) < this.epsilon) {
-            return null; // lines are coincident
+    solveCubic(a, b, c, d) {
+        const b2 = 2 * b;
+        const asq = a * a;
+        const acb = asq * a;
+        if (Math.abs(acb) < this.epsilon) {
+            // quadratic
+            if (Math.abs(b) < this.epsilon) {
+                // linear
+                if (Math.abs(c) < this.epsilon) {
+                    // horizontal line
+                    if (Math.abs(d) < this.epsilon) {
+                        // horizontal line at 0
+                        return [0];
+                    }
+                    return [];
+                }
+                return [-d / c];
+            }
+            let D = c * c - 4 * b * d;
+            if (Math.abs(D) < this.epsilon) {
+                return [-c / b2];
+            }
+            else if (D > 0) {
+                D = Math.sqrt(D);
+                return b2 < 0
+                    ? [(-c + D) / b2, (-c - D) / b2]
+                    : [(-c - D) / b2, (-c + D) / b2];
+            }
+            return [];
         }
-        const dx = aStart[0] - bStart[0];
-        const dy = aStart[1] - bStart[1];
-        const A = (bdx * dy - bdy * dx) / axb;
-        const B = (adx * dy - ady * dx) / axb;
-        // categorizes where along the line the intersection point is at
-        const categorize = (v) => v <= -this.epsilon
-            ? AlongIntersection.BeforeStart
-            : v < this.epsilon
-                ? AlongIntersection.EqualStart
-                : v - 1 <= -this.epsilon
-                    ? AlongIntersection.BetweenStartAndEnd
-                    : v - 1 < this.epsilon
-                        ? AlongIntersection.EqualEnd
-                        : AlongIntersection.AfterEnd;
-        const p = [aStart[0] + A * adx, aStart[1] + A * ady];
-        return {
-            alongA: categorize(A),
-            alongB: categorize(B),
-            p,
-        };
+        // convert to depressed cubic
+        const bsq = b * b;
+        let p = (3 * a * c - bsq) / (3 * asq);
+        const q = (bsq * b2 - 9 * a * b * c + 27 * asq * d) / (27 * acb);
+        const revert = -b / (3 * a);
+        if (Math.abs(p) < this.epsilon) {
+            return [revert + Math.cbrt(-q)];
+        }
+        if (Math.abs(q) < this.epsilon) {
+            if (p < 0) {
+                p = Math.sqrt(-p);
+                return [revert - p, revert, revert + p];
+            }
+            return [revert];
+        }
+        const D = (q * q) / 4 + (p * p * p) / 27;
+        if (Math.abs(D) < this.epsilon) {
+            const qop = q / p;
+            return qop < 0
+                ? [revert + 3 * qop, revert - 1.5 * qop]
+                : [revert - 1.5 * qop, revert + 3 * qop];
+        }
+        if (D > 0) {
+            const u = Math.cbrt(-q / 2 - Math.sqrt(D));
+            return [revert + u - p / (3 * u)];
+        }
+        const u = 2 * Math.sqrt(-p / 3);
+        const t = Math.acos((3 * q) / p / u) / 3;
+        const k = (2 * Math.PI) / 3;
+        return [
+            revert + u * Math.cos(t - 2 * k),
+            revert + u * Math.cos(t - k),
+            revert + u * Math.cos(t),
+        ];
+    }
+    isEqualVec2(a, b) {
+        return (Math.abs(a[0] - b[0]) < this.epsilon &&
+            Math.abs(a[1] - b[1]) < this.epsilon);
+    }
+    compareVec2(a, b) {
+        // returns -1 if a is smaller, 1 if b is smaller, 0 if equal
+        if (Math.abs(b[0] - a[0]) < this.epsilon) {
+            return Math.abs(b[1] - a[1]) < this.epsilon ? 0 : a[1] < b[1] ? -1 : 1;
+        }
+        return a[0] < b[0] ? -1 : 1;
     }
 }
 
@@ -132,7 +154,621 @@ class GeometryEpsilon extends Geometry {
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //
-class List {
+class SegmentTValuesBuilder {
+    constructor(geo) {
+        this.tValues = [];
+        this.geo = geo;
+    }
+    addArray(ts) {
+        for (const t of ts) {
+            this.tValues.push(t);
+        }
+        return this;
+    }
+    add(t) {
+        t = this.geo.snap01(t);
+        // ignore values outside 0-1 range
+        if (t < 0 || t > 1) {
+            return this;
+        }
+        for (const tv of this.tValues) {
+            if (this.geo.snap0(t - tv) === 0) {
+                // already have this location
+                return this;
+            }
+        }
+        this.tValues.push(t);
+        return this;
+    }
+    list() {
+        this.tValues.sort((a, b) => a - b);
+        return this.tValues;
+    }
+}
+class SegmentTValuePairsBuilder {
+    constructor(allowOutOfRange, geo) {
+        this.tValuePairs = [];
+        this.allowOutOfRange = allowOutOfRange;
+        this.geo = geo;
+    }
+    add(t1, t2) {
+        t1 = this.geo.snap01(t1);
+        t2 = this.geo.snap01(t2);
+        // ignore values outside 0-1 range
+        if (!this.allowOutOfRange && (t1 < 0 || t1 > 1 || t2 < 0 || t2 > 1)) {
+            return this;
+        }
+        for (const tv of this.tValuePairs) {
+            if (this.geo.snap0(t1 - tv[0]) === 0 ||
+                this.geo.snap0(t2 - tv[1]) === 0) {
+                // already have this location
+                return this;
+            }
+        }
+        this.tValuePairs.push([t1, t2]);
+        return this;
+    }
+    list() {
+        this.tValuePairs.sort((a, b) => a[0] - b[0]);
+        return this.tValuePairs;
+    }
+    done() {
+        return this.tValuePairs.length <= 0
+            ? null
+            : {
+                kind: "tValuePairs",
+                tValuePairs: this.list(),
+            };
+    }
+}
+class SegmentBase {
+}
+class SegmentLine extends SegmentBase {
+    constructor(p0, p1, geo) {
+        super();
+        this.p0 = p0;
+        this.p1 = p1;
+        this.geo = geo;
+    }
+    start() {
+        return this.p0;
+    }
+    start2() {
+        return this.p1;
+    }
+    end() {
+        return this.p1;
+    }
+    setStart(p0) {
+        this.p0 = p0;
+    }
+    setEnd(p1) {
+        this.p1 = p1;
+    }
+    point(t) {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        if (t === 0) {
+            return p0;
+        }
+        else if (t === 1) {
+            return p1;
+        }
+        return [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+    }
+    tangentStart() {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
+    }
+    tangentEnd() {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
+    }
+    split(ts) {
+        if (ts.length <= 0) {
+            return [this];
+        }
+        const pts = ts.map((t) => this.point(t));
+        pts.push(this.p1);
+        const result = [];
+        let last = this.p0;
+        for (const p of pts) {
+            result.push(new SegmentLine(last, p, this.geo));
+            last = p;
+        }
+        return result;
+    }
+    reverse() {
+        return new SegmentLine(this.p1, this.p0, this.geo);
+    }
+    boundingBox() {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        return [
+            [Math.min(p0[0], p1[0]), Math.min(p0[1], p1[1])],
+            [Math.max(p0[0], p1[0]), Math.max(p0[1], p1[1])],
+        ];
+    }
+    pointOn(p) {
+        return this.geo.isCollinear(p, this.p0, this.p1);
+    }
+    draw(ctx) {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(p1[0], p1[1]);
+    }
+}
+class SegmentCurve extends SegmentBase {
+    constructor(p0, p1, p2, p3, geo) {
+        super();
+        this.p0 = p0;
+        this.p1 = p1;
+        this.p2 = p2;
+        this.p3 = p3;
+        this.geo = geo;
+    }
+    start() {
+        return this.p0;
+    }
+    start2() {
+        return this.p1;
+    }
+    end() {
+        return this.p3;
+    }
+    setStart(p0) {
+        this.p0 = p0;
+    }
+    setEnd(p3) {
+        this.p3 = p3;
+    }
+    point(t) {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        const p2 = this.p2;
+        const p3 = this.p3;
+        if (t === 0) {
+            return p0;
+        }
+        else if (t === 1) {
+            return p3;
+        }
+        const t1t = (1 - t) * (1 - t);
+        const tt = t * t;
+        const t0 = t1t * (1 - t);
+        const t1 = 3 * t1t * t;
+        const t2 = 3 * tt * (1 - t);
+        const t3 = tt * t;
+        return [
+            p0[0] * t0 + p1[0] * t1 + p2[0] * t2 + p3[0] * t3,
+            p0[1] * t0 + p1[1] * t1 + p2[1] * t2 + p3[1] * t3,
+        ];
+    }
+    tangentStart() {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
+    }
+    tangentEnd() {
+        const p2 = this.p2;
+        const p3 = this.p3;
+        return this.geo.atan2deg(p3[1] - p2[1], p3[0] - p2[0]);
+    }
+    split(ts) {
+        if (ts.length <= 0) {
+            return [this];
+        }
+        const result = [];
+        const splitSingle = (pts, t) => {
+            const [p0, p1, p2, p3] = pts;
+            const p4 = lerpVec2(p0, p1, t);
+            const p5 = lerpVec2(p1, p2, t);
+            const p6 = lerpVec2(p2, p3, t);
+            const p7 = lerpVec2(p4, p5, t);
+            const p8 = lerpVec2(p5, p6, t);
+            const p9 = lerpVec2(p7, p8, t);
+            result.push(new SegmentCurve(p0, p4, p7, p9, this.geo));
+            return [p9, p8, p6, p3];
+        };
+        let last = [this.p0, this.p1, this.p2, this.p3];
+        let lastT = 0;
+        for (const t of ts) {
+            last = splitSingle(last, (t - lastT) / (1 - lastT));
+            lastT = t;
+        }
+        result.push(new SegmentCurve(last[0], last[1], last[2], last[3], this.geo));
+        return result;
+    }
+    reverse() {
+        return new SegmentCurve(this.p3, this.p2, this.p1, this.p0, this.geo);
+    }
+    getCubicCoefficients(axis) {
+        const p0 = this.p0[axis];
+        const p1 = this.p1[axis];
+        const p2 = this.p2[axis];
+        const p3 = this.p3[axis];
+        return [
+            p3 - 3 * p2 + 3 * p1 - p0,
+            3 * p2 - 6 * p1 + 3 * p0,
+            3 * p1 - 3 * p0,
+            p0,
+        ];
+    }
+    boundingTValues() {
+        const result = new SegmentTValuesBuilder(this.geo);
+        const bounds = (x0, x1, x2, x3) => {
+            const a = 3 * x3 - 9 * x2 + 9 * x1 - 3 * x0;
+            const b = 6 * x0 - 12 * x1 + 6 * x2;
+            const c = 3 * x1 - 3 * x0;
+            if (this.geo.snap0(a) === 0) {
+                result.add(-c / b);
+            }
+            else {
+                const disc = b * b - 4 * a * c;
+                if (disc >= 0) {
+                    const sq = Math.sqrt(disc);
+                    result.add((-b + sq) / (2 * a));
+                    result.add((-b - sq) / (2 * a));
+                }
+            }
+            return result;
+        };
+        const p0 = this.p0;
+        const p1 = this.p1;
+        const p2 = this.p2;
+        const p3 = this.p3;
+        bounds(p0[0], p1[0], p2[0], p3[0]);
+        bounds(p0[1], p1[1], p2[1], p3[1]);
+        return result.list();
+    }
+    inflectionTValues() {
+        const result = new SegmentTValuesBuilder(this.geo);
+        result.addArray(this.boundingTValues());
+        const p0 = this.p0;
+        const p1 = this.p1;
+        const p2 = this.p2;
+        const p3 = this.p3;
+        const p10x = 3 * (p1[0] - p0[0]);
+        const p10y = 3 * (p1[1] - p0[1]);
+        const p21x = 6 * (p2[0] - p1[0]);
+        const p21y = 6 * (p2[1] - p1[1]);
+        const p32x = 3 * (p3[0] - p2[0]);
+        const p32y = 3 * (p3[1] - p2[1]);
+        const p210x = 6 * (p2[0] - 2 * p1[0] + p0[0]);
+        const p210y = 6 * (p2[1] - 2 * p1[1] + p0[1]);
+        const p321x = 6 * (p3[0] - 2 * p2[0] + p1[0]);
+        const p321y = 6 * (p3[1] - 2 * p2[1] + p1[1]);
+        const qx = p10x - p21x + p32x;
+        const qy = p10y - p21y + p32y;
+        const rx = p21x - 2 * p10x;
+        const ry = p21y - 2 * p10y;
+        const sx = p10x;
+        const sy = p10y;
+        const ux = p321x - p210x;
+        const uy = p321y - p210y;
+        const vx = p210x;
+        const vy = p210y;
+        const A = qx * uy - qy * ux;
+        const B = qx * vy + rx * uy - qy * vx - ry * ux;
+        const C = rx * vy + sx * uy - ry * vx - sy * ux;
+        const D = sx * vy - sy * vx;
+        for (const s of this.geo.solveCubic(A, B, C, D)) {
+            result.add(s);
+        }
+        return result.list();
+    }
+    boundingBox() {
+        const p0 = this.p0;
+        const p3 = this.p3;
+        const min = [Math.min(p0[0], p3[0]), Math.min(p0[1], p3[1])];
+        const max = [Math.max(p0[0], p3[0]), Math.max(p0[1], p3[1])];
+        for (const t of this.boundingTValues()) {
+            const p = this.point(t);
+            min[0] = Math.min(min[0], p[0]);
+            min[1] = Math.min(min[1], p[1]);
+            max[0] = Math.max(max[0], p[0]);
+            max[1] = Math.max(max[1], p[1]);
+        }
+        return [min, max];
+    }
+    mapXtoY(x) {
+        if (this.geo.snap0(this.p0[0] - x) === 0) {
+            return this.p0[1];
+        }
+        if (this.geo.snap0(this.p3[0] - x) === 0) {
+            return this.p3[1];
+        }
+        const p0 = this.p0[0] - x;
+        const p1 = this.p1[0] - x;
+        const p2 = this.p2[0] - x;
+        const p3 = this.p3[0] - x;
+        const A = p3 - 3 * p2 + 3 * p1 - p0;
+        const B = 3 * p2 - 6 * p1 + 3 * p0;
+        const C = 3 * p1 - 3 * p0;
+        const D = p0;
+        const tv = this.geo.solveCubic(A, B, C, D);
+        for (const t of tv) {
+            const ts = this.geo.snap01(t);
+            if (ts >= 0 && ts <= 1) {
+                return this.point(t)[1];
+            }
+        }
+        return false;
+    }
+    pointOn(p) {
+        if (this.geo.isEqualVec2(this.p0, p) || this.geo.isEqualVec2(this.p3, p)) {
+            return true;
+        }
+        const y = this.mapXtoY(p[0]);
+        if (y === false) {
+            return false;
+        }
+        return this.geo.snap0(y - p[1]) === 0;
+    }
+    toLine() {
+        // note: this won't work for arbitrary curves, because they could loop back on themselves,
+        // but will work fine for curves that have already been split at all inflection points
+        const p0 = this.p0;
+        const p1 = this.p1;
+        const p2 = this.p2;
+        const p3 = this.p3;
+        if (
+        // vertical line
+        (this.geo.snap0(p0[0] - p1[0]) === 0 &&
+            this.geo.snap0(p0[0] - p2[0]) === 0 &&
+            this.geo.snap0(p0[0] - p3[0]) === 0) || // horizontal line
+            (this.geo.snap0(p0[1] - p1[1]) === 0 &&
+                this.geo.snap0(p0[1] - p2[1]) === 0 &&
+                this.geo.snap0(p0[1] - p3[1]) === 0)) {
+            return new SegmentLine(p0, p3, this.geo);
+        }
+        return null;
+    }
+    draw(ctx) {
+        const p0 = this.p0;
+        const p1 = this.p1;
+        const p2 = this.p2;
+        const p3 = this.p3;
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.bezierCurveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+    }
+}
+function projectPointOntoSegmentLine(p, seg) {
+    const dx = seg.p1[0] - seg.p0[0];
+    const dy = seg.p1[1] - seg.p0[1];
+    const px = p[0] - seg.p0[0];
+    const py = p[1] - seg.p0[1];
+    const dist = dx * dx + dy * dy;
+    const dot = px * dx + py * dy;
+    return dot / dist;
+}
+function segmentLineIntersectSegmentLine(segA, segB, allowOutOfRange) {
+    const geo = segA.geo;
+    const a0 = segA.p0;
+    const a1 = segA.p1;
+    const b0 = segB.p0;
+    const b1 = segB.p1;
+    const adx = a1[0] - a0[0];
+    const ady = a1[1] - a0[1];
+    const bdx = b1[0] - b0[0];
+    const bdy = b1[1] - b0[1];
+    const axb = adx * bdy - ady * bdx;
+    if (geo.snap0(axb) === 0) {
+        // lines are coincident or parallel
+        if (!geo.isCollinear(a0, a1, b0)) {
+            // they're not coincident, so they're parallel, with no intersections
+            return null;
+        }
+        // otherwise, segments are on top of each other somehow (aka coincident)
+        const tB0onA = projectPointOntoSegmentLine(segB.p0, segA);
+        const tB1onA = projectPointOntoSegmentLine(segB.p1, segA);
+        const tAMin = geo.snap01(Math.min(tB0onA, tB1onA));
+        const tAMax = geo.snap01(Math.max(tB0onA, tB1onA));
+        if (tAMax < 0 || tAMin > 1) {
+            return null;
+        }
+        const tA0onB = projectPointOntoSegmentLine(segA.p0, segB);
+        const tA1onB = projectPointOntoSegmentLine(segA.p1, segB);
+        const tBMin = geo.snap01(Math.min(tA0onB, tA1onB));
+        const tBMax = geo.snap01(Math.max(tA0onB, tA1onB));
+        if (tBMax < 0 || tBMin > 1) {
+            return null;
+        }
+        return {
+            kind: "tRangePairs",
+            tStart: [Math.max(0, tAMin), Math.max(0, tBMin)],
+            tEnd: [Math.min(1, tAMax), Math.min(1, tBMax)],
+        };
+    }
+    // otherwise, not coincident, so they intersect somewhere
+    const dx = a0[0] - b0[0];
+    const dy = a0[1] - b0[1];
+    return new SegmentTValuePairsBuilder(allowOutOfRange, geo)
+        .add((bdx * dy - bdy * dx) / axb, (adx * dy - ady * dx) / axb)
+        .done();
+}
+function segmentLineIntersectSegmentCurve(segA, segB, allowOutOfRange, invert) {
+    const geo = segA.geo;
+    const a0 = segA.p0;
+    const a1 = segA.p1;
+    const A = a1[1] - a0[1];
+    const B = a0[0] - a1[0];
+    const C = A * a0[0] + B * a0[1];
+    const bx = segB.getCubicCoefficients(0);
+    const by = segB.getCubicCoefficients(1);
+    const roots = geo.solveCubic(A * bx[0] + B * by[0], A * bx[1] + B * by[1], A * bx[2] + B * by[2], A * bx[3] + B * by[3] - C);
+    const result = new SegmentTValuePairsBuilder(allowOutOfRange, geo);
+    if (geo.snap0(A) === 0) {
+        // project curve's X component onto line
+        for (const t of roots) {
+            const X = bx[0] * t * t * t + bx[1] * t * t + bx[2] * t + bx[3];
+            const s = (a0[0] - X) / B;
+            if (invert) {
+                result.add(t, s);
+            }
+            else {
+                result.add(s, t);
+            }
+        }
+    }
+    else {
+        // project curve's Y component onto line
+        for (const t of roots) {
+            const Y = by[0] * t * t * t + by[1] * t * t + by[2] * t + by[3];
+            const s = (Y - a0[1]) / A;
+            if (invert) {
+                result.add(t, s);
+            }
+            else {
+                result.add(s, t);
+            }
+        }
+    }
+    return result.done();
+}
+function segmentCurveIntersectSegmentCurve(segA, segB, allowOutOfRange) {
+    const geo = segA.geo;
+    // dummy coincident calculation for now
+    // TODO: implement actual range/equality testing
+    if (geo.isEqualVec2(segA.p0, segB.p0)) {
+        if (geo.isEqualVec2(segA.p3, segB.p3)) {
+            if (geo.isEqualVec2(segA.p1, segB.p1) &&
+                geo.isEqualVec2(segA.p2, segB.p2)) {
+                return {
+                    kind: "tRangePairs",
+                    tStart: [0, 0],
+                    tEnd: [1, 1],
+                };
+            }
+            else {
+                return {
+                    kind: "tValuePairs",
+                    tValuePairs: [
+                        [0, 0],
+                        [1, 1],
+                    ],
+                };
+            }
+        }
+        else {
+            return {
+                kind: "tValuePairs",
+                tValuePairs: [[0, 0]],
+            };
+        }
+    }
+    else if (geo.isEqualVec2(segA.p0, segB.p3)) {
+        return {
+            kind: "tValuePairs",
+            tValuePairs: [[0, 1]],
+        };
+    }
+    else if (geo.isEqualVec2(segA.p3, segB.p0)) {
+        return {
+            kind: "tValuePairs",
+            tValuePairs: [[1, 0]],
+        };
+    }
+    else if (geo.isEqualVec2(segA.p3, segB.p3)) {
+        return {
+            kind: "tValuePairs",
+            tValuePairs: [[1, 1]],
+        };
+    }
+    const result = new SegmentTValuePairsBuilder(allowOutOfRange, geo);
+    const checkCurves = (c1, t1L, t1R, c2, t2L, t2R) => {
+        const bbox1 = c1.boundingBox();
+        const bbox2 = c2.boundingBox();
+        if (!boundingBoxesIntersect(bbox1, bbox2)) {
+            return;
+        }
+        const t1M = (t1L + t1R) / 2;
+        const t2M = (t2L + t2R) / 2;
+        if (geo.snap0(t1R - t1L) === 0 && geo.snap0(t2R - t2L) === 0) {
+            result.add(t1M, t2M);
+            return;
+        }
+        const [c1L, c1R] = c1.split([0.5]);
+        const [c2L, c2R] = c2.split([0.5]);
+        checkCurves(c1L, t1L, t1M, c2L, t2L, t2M);
+        checkCurves(c1R, t1M, t1R, c2L, t2L, t2M);
+        checkCurves(c1L, t1L, t1M, c2R, t2M, t2R);
+        checkCurves(c1R, t1M, t1R, c2R, t2M, t2R);
+    };
+    checkCurves(segA, 0, 1, segB, 0, 1);
+    return result.done();
+}
+// return value:
+//   null               => no intersection
+//   SegmentTValuePairs => the segments intersect along a series of points, whose position is
+//                         represented by T values pairs [segA_tValue, segB_tValue]
+//                         note: a T value pair is returned even if it's just a shared vertex!
+//   SegmentTRangePairs => the segments are coincident (on top of each other), and intersect along a
+//                         segment, ranged by T values
+function segmentsIntersect(segA, segB, allowOutOfRange) {
+    if (segA instanceof SegmentLine) {
+        if (segB instanceof SegmentLine) {
+            return segmentLineIntersectSegmentLine(segA, segB, allowOutOfRange);
+        }
+        else if (segB instanceof SegmentCurve) {
+            return segmentLineIntersectSegmentCurve(segA, segB, allowOutOfRange, false);
+        }
+    }
+    else if (segA instanceof SegmentCurve) {
+        if (segB instanceof SegmentLine) {
+            return segmentLineIntersectSegmentCurve(segB, segA, allowOutOfRange, true);
+        }
+        else if (segB instanceof SegmentCurve) {
+            return segmentCurveIntersectSegmentCurve(segA, segB, allowOutOfRange);
+        }
+    }
+    throw new Error("PolyBool: Unknown segment instance in segmentsIntersect");
+}
+
+//
+// polybool - Boolean operations on polygons (union, intersection, etc)
+// by Sean Connelly (@velipso), https://sean.fun
+// Project Home: https://github.com/velipso/polybool
+// SPDX-License-Identifier: 0BSD
+//
+class SegmentBoolBase {
+    constructor(data, fill = null, log = null) {
+        var _a, _b, _c;
+        this.otherFill = null;
+        this.id = (_a = log === null || log === void 0 ? void 0 : log.segmentId()) !== null && _a !== void 0 ? _a : -1;
+        this.data = data;
+        this.myFill = {
+            above: (_b = fill === null || fill === void 0 ? void 0 : fill.above) !== null && _b !== void 0 ? _b : null,
+            below: (_c = fill === null || fill === void 0 ? void 0 : fill.below) !== null && _c !== void 0 ? _c : null,
+        };
+    }
+}
+class SegmentBoolLine extends SegmentBoolBase {
+}
+class SegmentBoolCurve extends SegmentBoolBase {
+}
+function copySegmentBool(seg, log) {
+    if (seg instanceof SegmentBoolLine) {
+        return new SegmentBoolLine(seg.data, seg.myFill, log);
+    }
+    else if (seg instanceof SegmentBoolCurve) {
+        return new SegmentBoolCurve(seg.data, seg.myFill, log);
+    }
+    throw new Error("PolyBool: Unknown SegmentBool in copySegmentBool");
+}
+class EventBool {
+    constructor(isStart, p, seg, primary) {
+        this.status = null;
+        this.isStart = isStart;
+        this.p = p;
+        this.seg = seg;
+        this.primary = primary;
+    }
+}
+class ListBool {
     constructor() {
         this.nodes = [];
     }
@@ -182,138 +818,202 @@ class List {
         };
     }
 }
-
-//
-// polybool - Boolean operations on polygons (union, intersection, etc)
-// by Sean Connelly (@velipso), https://sean.fun
-// Project Home: https://github.com/velipso/polybool
-// SPDX-License-Identifier: 0BSD
-//
-class Segment {
-    constructor(start, end, copyMyFill, log) {
-        var _a;
-        this.otherFill = null;
-        this.id = (_a = log === null || log === void 0 ? void 0 : log.segmentId()) !== null && _a !== void 0 ? _a : -1;
-        this.start = start;
-        this.end = end;
-        this.myFill = {
-            above: copyMyFill ? copyMyFill.myFill.above : null,
-            below: copyMyFill ? copyMyFill.myFill.below : null,
-        };
-    }
-}
-class Event {
-    constructor(isStart, p, seg, primary) {
-        this.status = null;
-        this.isStart = isStart;
-        this.p = p;
-        this.seg = seg;
-        this.primary = primary;
-    }
-}
 class Intersecter {
     constructor(selfIntersection, geo, log = null) {
-        this.events = new List();
-        this.status = new List();
+        this.events = new ListBool();
+        this.status = new ListBool();
         this.selfIntersection = selfIntersection;
         this.geo = geo;
         this.log = log;
     }
-    compareEvents(p1_isStart, p1_1, p1_2, p2_isStart, p2_1, p2_2) {
+    compareEvents(aStart, a1, a2, aSeg, bStart, b1, b2, bSeg) {
         // compare the selected points first
-        const comp = this.geo.pointsCompare(p1_1, p2_1);
+        const comp = this.geo.compareVec2(a1, b1);
         if (comp !== 0) {
             return comp;
         }
         // the selected points are the same
-        if (this.geo.pointsSame(p1_2, p2_2)) {
+        if (aSeg instanceof SegmentLine &&
+            bSeg instanceof SegmentLine &&
+            this.geo.isEqualVec2(a2, b2)) {
             // if the non-selected points are the same too...
             return 0; // then the segments are equal
         }
-        if (p1_isStart !== p2_isStart) {
+        if (aStart !== bStart) {
             // if one is a start and the other isn't...
-            return p1_isStart ? 1 : -1; // favor the one that isn't the start
+            return aStart ? 1 : -1; // favor the one that isn't the start
         }
-        // otherwise, we'll have to calculate which one is below the other manually
-        return this.geo.pointAboveOrOnLine(p1_2, p2_isStart ? p2_1 : p2_2, // order matters
-        p2_isStart ? p2_2 : p2_1)
-            ? 1
-            : -1;
+        return this.compareSegments(bSeg, aSeg);
     }
     addEvent(ev) {
         this.events.insertBefore(ev, (here) => {
             if (here === ev) {
                 return 0;
             }
-            return this.compareEvents(ev.isStart, ev.p, ev.other.p, here.isStart, here.p, here.other.p);
+            return this.compareEvents(ev.isStart, ev.p, ev.other.p, ev.seg.data, here.isStart, here.p, here.other.p, here.seg.data);
         });
     }
-    divideEvent(ev, p) {
-        var _a;
-        const ns = new Segment(p, ev.seg.end, ev.seg, this.log);
+    divideEvent(ev, t, p) {
+        var _a, _b;
+        (_a = this.log) === null || _a === void 0 ? void 0 : _a.segmentDivide(ev.seg, p);
+        const [left, right] = ev.seg.data.split([t]);
+        // set the *exact* intersection point
+        left.setEnd(p);
+        right.setStart(p);
+        const ns = right instanceof SegmentLine
+            ? new SegmentBoolLine(right, ev.seg.myFill, this.log)
+            : right instanceof SegmentCurve
+                ? new SegmentBoolCurve(right, ev.seg.myFill, this.log)
+                : null;
+        if (!ns) {
+            throw new Error("PolyBool: Unknown segment data in divideEvent");
+        }
         // slides an end backwards
         //   (start)------------(end)    to:
         //   (start)---(end)
-        (_a = this.log) === null || _a === void 0 ? void 0 : _a.segmentChop(ev.seg, p);
         this.events.remove(ev.other);
-        ev.seg.end = p;
+        ev.seg.data = left;
+        (_b = this.log) === null || _b === void 0 ? void 0 : _b.segmentChop(ev.seg);
         ev.other.p = p;
         this.addEvent(ev.other);
         return this.addSegment(ns, ev.primary);
     }
-    newSegment(p1, p2) {
-        const forward = this.geo.pointsCompare(p1, p2);
-        if (forward === 0) {
-            // points are equal, so we have a zero-length segment
-            return null; // skip it
-        }
-        return forward < 0
-            ? new Segment(p1, p2, null, this.log)
-            : new Segment(p2, p1, null, this.log);
-    }
     addSegment(seg, primary) {
-        const evStart = new Event(true, seg.start, seg, primary);
-        const evEnd = new Event(false, seg.end, seg, primary);
+        const evStart = new EventBool(true, seg.data.start(), seg, primary);
+        const evEnd = new EventBool(false, seg.data.end(), seg, primary);
         evStart.other = evEnd;
         evEnd.other = evStart;
         this.addEvent(evStart);
         this.addEvent(evEnd);
         return evStart;
     }
+    addLine(from, to, primary = true) {
+        const f = this.geo.compareVec2(from, to);
+        if (f === 0) {
+            // points are equal, so we have a zero-length segment
+            return; // skip it
+        }
+        this.addSegment(new SegmentBoolLine(new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo), null, this.log), primary);
+    }
+    addCurve(from, c1, c2, to, primary = true) {
+        const original = new SegmentCurve(from, c1, c2, to, this.geo);
+        const curves = original.split(original.inflectionTValues());
+        for (const curve of curves) {
+            const f = this.geo.compareVec2(curve.start(), curve.end());
+            if (f === 0) {
+                // points are equal AFTER splitting... this only happens for zero-length segments
+                continue; // skip it
+            }
+            // convert horizontal/vertical curves to lines
+            const line = curve.toLine();
+            if (line) {
+                this.addLine(line.p0, line.p1, primary);
+            }
+            else {
+                this.addSegment(new SegmentBoolCurve(f < 0 ? curve : curve.reverse(), null, this.log), primary);
+            }
+        }
+    }
     addRegion(region) {
         // regions are a list of points:
         //  [ [0, 0], [100, 0], [50, 100] ]
         // you can add multiple regions before running calculate
-        let pt1;
-        let pt2 = region[region.length - 1];
+        // regions are a list of points:
+        //  [ [0, 0], [100, 0], [50, 100] ]
+        // you can add multiple regions before running calculate
+        let p1;
+        let p2 = region[region.length - 1];
         for (let i = 0; i < region.length; i++) {
-            pt1 = pt2;
-            pt2 = region[i];
-            const seg = this.newSegment(pt1, pt2);
-            if (seg) {
-                this.addSegment(seg, true);
+            p1 = p2;
+            p2 = region[i];
+            const f = this.geo.compareVec2(p1, p2);
+            if (f === 0) {
+                // points are equal, so we have a zero-length segment
+                continue; // skip it
             }
+            this.addSegment(new SegmentBoolLine(new SegmentLine(f < 0 ? p1 : p2, f < 0 ? p2 : p1, this.geo), null, this.log), true);
         }
     }
-    compareStatus(ev1, ev2) {
-        const a1 = ev1.seg.start;
-        const a2 = ev1.seg.end;
-        const b1 = ev2.seg.start;
-        const b2 = ev2.seg.end;
-        if (this.geo.pointsCollinear(a1, b1, b2)) {
-            if (this.geo.pointsCollinear(a2, b1, b2)) {
-                return 1;
+    compareSegments(seg1, seg2) {
+        // TODO:
+        //  This is where some of the curve instability comes from... we need to reliably sort
+        //  segments, but this is surprisingly hard when it comes to curves.
+        //
+        //  The easy case is something like:
+        //
+        //             C   A - - - D
+        //               \
+        //                 \
+        //                   B
+        //  A is clearly above line C-B, which is easily calculated... however, once curves are
+        //  introduced, it's not so obvious without using some heuristic which will fail at times.
+        //
+        let A = seg1.start();
+        let B = seg2.start2();
+        const C = seg2.start();
+        if (seg2.pointOn(A)) {
+            // A intersects seg2 somehow (possibly sharing a start point, or maybe just splitting it)
+            //
+            //   AC - - - - D
+            //      \
+            //        \
+            //          B
+            //
+            // so grab seg1's second point (D) instead
+            A = seg1.start2();
+            if (seg1 instanceof SegmentLine &&
+                seg2 instanceof SegmentLine &&
+                seg2.pointOn(A)) {
+                // oh... D is on the line too... so these are the same
+                return 0;
             }
-            return this.geo.pointAboveOrOnLine(a2, b1, b2) ? 1 : -1;
+            if (seg2 instanceof SegmentCurve) {
+                if (this.geo.snap0(A[0] - C[0]) === 0 &&
+                    this.geo.snap0(B[0] - C[0]) === 0) {
+                    // seg2 is a curve, but the tangent line (C-B) at the start point is vertical, and
+                    // collinear with A... so... just sort based on the Y values I guess?
+                    return Math.sign(C[1] - A[1]);
+                }
+            }
         }
-        return this.geo.pointAboveOrOnLine(a1, b1, b2) ? 1 : -1;
+        else {
+            if (seg2 instanceof SegmentCurve) {
+                // find seg2's position at A[0] and see if it's above or below A[1]
+                const y = seg2.mapXtoY(A[0]);
+                if (y !== false) {
+                    return Math.sign(y - A[1]);
+                }
+            }
+            if (seg1 instanceof SegmentCurve) {
+                // unfortunately, in order to sort against curved segments, we need to check the
+                // intersection point... this means a lot more intersection tests, but I'm not sure how else
+                // to sort correctly
+                const i = segmentsIntersect(seg1, seg2, true);
+                if (i && i.kind === "tValuePairs") {
+                    // find the intersection point on seg1
+                    for (const pair of i.tValuePairs) {
+                        const t = this.geo.snap01(pair[0]);
+                        if (t > 0 && t < 1) {
+                            B = seg1.point(t);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // fallthrough to this calculation which determines if A is on one side or another of C-B
+        const [Ax, Ay] = A;
+        const [Bx, By] = B;
+        const [Cx, Cy] = C;
+        return Math.sign((Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax));
     }
     statusFindSurrounding(ev) {
         return this.status.findTransition(ev, (here) => {
-            if (here === ev) {
+            if (ev === here) {
                 return 0;
             }
-            return -this.compareStatus(ev, here);
+            const c = this.compareSegments(ev.seg.data, here.seg.data);
+            return c === 0 ? -1 : c;
         });
     }
     checkIntersection(ev1, ev2) {
@@ -321,93 +1021,103 @@ class Intersecter {
         // returns the segment equal to ev1, or null if nothing equal
         const seg1 = ev1.seg;
         const seg2 = ev2.seg;
-        const a1 = seg1.start;
-        const a2 = seg1.end;
-        const b1 = seg2.start;
-        const b2 = seg2.end;
         (_a = this.log) === null || _a === void 0 ? void 0 : _a.checkIntersection(seg1, seg2);
-        const i = this.geo.linesIntersect(a1, a2, b1, b2);
+        const i = segmentsIntersect(seg1.data, seg2.data, false);
         if (i === null) {
+            // no intersections
+            return null;
+        }
+        else if (i.kind === "tRangePairs") {
             // segments are parallel or coincident
-            // if points aren't collinear, then the segments are parallel, so no
-            // intersections
-            if (!this.geo.pointsCollinear(a1, a2, b1)) {
-                return null;
-            }
-            // otherwise, segments are on top of each other somehow (aka coincident)
-            if (this.geo.pointsSame(a1, b2) || this.geo.pointsSame(a2, b1)) {
+            const { tStart: [tA1, tB1], tEnd: [tA2, tB2], } = i;
+            if ((tA1 === 1 && tA2 === 1 && tB1 === 0 && tB2 === 0) ||
+                (tA1 === 0 && tA2 === 0 && tB1 === 1 && tB2 === 1)) {
                 return null; // segments touch at endpoints... no intersection
             }
-            const a1_equ_b1 = this.geo.pointsSame(a1, b1);
-            const a2_equ_b2 = this.geo.pointsSame(a2, b2);
-            if (a1_equ_b1 && a2_equ_b2) {
+            if (tA1 === 0 && tA2 === 1 && tB1 === 0 && tB2 === 1) {
                 return ev2; // segments are exactly equal
             }
-            const a1_between = !a1_equ_b1 && this.geo.pointBetween(a1, b1, b2);
-            const a2_between = !a2_equ_b2 && this.geo.pointBetween(a2, b1, b2);
-            if (a1_equ_b1) {
-                if (a2_between) {
+            const a1 = seg1.data.start();
+            const a2 = seg1.data.end();
+            const b2 = seg2.data.end();
+            if (tA1 === 0 && tB1 === 0) {
+                if (tA2 === 1) {
                     //  (a1)---(a2)
                     //  (b1)----------(b2)
-                    this.divideEvent(ev2, a2);
+                    this.divideEvent(ev2, tB2, a2);
                 }
                 else {
                     //  (a1)----------(a2)
                     //  (b1)---(b2)
-                    this.divideEvent(ev1, b2);
+                    this.divideEvent(ev1, tA2, b2);
                 }
                 return ev2;
             }
-            else if (a1_between) {
-                if (!a2_equ_b2) {
+            else if (tB1 > 0 && tB1 < 1) {
+                if (tA2 === 1 && tB2 === 1) {
+                    //         (a1)---(a2)
+                    //  (b1)----------(b2)
+                    this.divideEvent(ev2, tB1, a1);
+                }
+                else {
                     // make a2 equal to b2
-                    if (a2_between) {
+                    if (tA2 === 1) {
                         //         (a1)---(a2)
                         //  (b1)-----------------(b2)
-                        this.divideEvent(ev2, a2);
+                        this.divideEvent(ev2, tB2, a2);
                     }
                     else {
                         //         (a1)----------(a2)
                         //  (b1)----------(b2)
-                        this.divideEvent(ev1, b2);
+                        this.divideEvent(ev1, tA2, b2);
                     }
+                    //         (a1)---(a2)
+                    //  (b1)----------(b2)
+                    this.divideEvent(ev2, tB1, a1);
                 }
-                //         (a1)---(a2)
-                //  (b1)----------(b2)
-                this.divideEvent(ev2, a1);
             }
+            return null;
         }
-        else {
-            // otherwise, lines intersect at i.p, which may or may not be between the
-            // endpoints
+        else if (i.kind === "tValuePairs") {
+            if (i.tValuePairs.length <= 0) {
+                return null;
+            }
+            // process a single intersection
+            // skip intersections where endpoints meet
+            let minPair = i.tValuePairs[0];
+            for (let j = 1; j < i.tValuePairs.length &&
+                ((minPair[0] === 0 && minPair[1] === 0) ||
+                    (minPair[0] === 0 && minPair[1] === 1) ||
+                    (minPair[0] === 1 && minPair[1] === 0) ||
+                    (minPair[0] === 1 && minPair[1] === 1)); j++) {
+                minPair = i.tValuePairs[j];
+            }
+            const [tA, tB] = minPair;
+            // even though *in theory* seg1.data.point(tA) === seg2.data.point(tB), that isn't exactly
+            // correct in practice because intersections aren't exact... so we need to calculate a single
+            // intersection point that everyone can share
+            const p = tB === 0
+                ? seg2.data.start()
+                : tB === 1
+                    ? seg2.data.end()
+                    : tA === 0
+                        ? seg1.data.start()
+                        : tA === 1
+                            ? seg1.data.end()
+                            : seg1.data.point(tA);
             // is A divided between its endpoints? (exclusive)
-            if (i.alongA === AlongIntersection.BetweenStartAndEnd) {
-                if (i.alongB === AlongIntersection.EqualStart) {
-                    this.divideEvent(ev1, b1);
-                }
-                else if (i.alongB === AlongIntersection.BetweenStartAndEnd) {
-                    this.divideEvent(ev1, i.p);
-                }
-                else if (i.alongB === AlongIntersection.EqualEnd) {
-                    this.divideEvent(ev1, b2);
-                }
+            if (tA > 0 && tA < 1) {
+                this.divideEvent(ev1, tA, p);
             }
             // is B divided between its endpoints? (exclusive)
-            if (i.alongB === AlongIntersection.BetweenStartAndEnd) {
-                if (i.alongA === AlongIntersection.EqualStart) {
-                    this.divideEvent(ev2, a1);
-                }
-                else if (i.alongA === AlongIntersection.BetweenStartAndEnd) {
-                    this.divideEvent(ev2, i.p);
-                }
-                else if (i.alongA === AlongIntersection.EqualEnd) {
-                    this.divideEvent(ev2, a2);
-                }
+            if (tB > 0 && tB < 1) {
+                this.divideEvent(ev2, tB, p);
             }
+            return null;
         }
-        return null;
+        throw new Error("PolyBool: Unknown intersection type");
     }
-    calculate(primaryPolyInverted, secondaryPolyInverted) {
+    calculate() {
         var _a, _b, _c, _d, _e, _f, _g, _h;
         const segments = [];
         while (!this.events.isEmpty()) {
@@ -487,9 +1197,8 @@ class Intersecter {
                     }
                     // next, calculate whether we are filled below us
                     if (!below) {
-                        // if nothing is below us...
-                        // we are filled below us if the polygon is inverted
-                        ev.seg.myFill.below = primaryPolyInverted;
+                        // if nothing is below us, then we're not filled
+                        ev.seg.myFill.below = false;
                     }
                     else {
                         // otherwise, we know the answer -- it's the same if whatever is
@@ -499,12 +1208,9 @@ class Intersecter {
                     // since now we know if we're filled below us, we can calculate
                     // whether we're filled above us by applying toggle to whatever is
                     // below us
-                    if (toggle) {
-                        ev.seg.myFill.above = !ev.seg.myFill.below;
-                    }
-                    else {
-                        ev.seg.myFill.above = ev.seg.myFill.below;
-                    }
+                    ev.seg.myFill.above = toggle
+                        ? !ev.seg.myFill.below
+                        : ev.seg.myFill.below;
                 }
                 else {
                     // now we fill in any missing transition information, since we are
@@ -514,16 +1220,15 @@ class Intersecter {
                         // we're inside the other polygon
                         let inside;
                         if (!below) {
-                            // if nothing is below us, then we're inside if the other polygon
-                            // is inverted
-                            inside = ev.primary ? secondaryPolyInverted : primaryPolyInverted;
+                            // if nothing is below us, then we're not filled
+                            inside = false;
                         }
                         else {
                             // otherwise, something is below us
                             // so copy the below segment's other polygon's above
                             if (ev.primary === below.primary) {
                                 if (below.seg.otherFill === null) {
-                                    throw new Error("otherFill is null");
+                                    throw new Error("PolyBool: Unexpected state of otherFill (null)");
                                 }
                                 inside = below.seg.otherFill.above;
                             }
@@ -565,7 +1270,7 @@ class Intersecter {
                     // make sure `seg.myFill` actually points to the primary polygon
                     // though
                     if (!ev.seg.otherFill) {
-                        throw new Error("otherFill is null");
+                        throw new Error("PolyBool: Unexpected state of otherFill (null)");
                     }
                     const s = ev.seg.myFill;
                     ev.seg.myFill = ev.seg.otherFill;
@@ -599,10 +1304,19 @@ function select(segments, selection, log) {
             (seg.otherFill && seg.otherFill.below ? 1 : 0);
         if (selection[index] !== 0) {
             // copy the segment to the results, while also calculating the fill status
-            const keep = new Segment(seg.start, seg.end, null, log);
-            keep.myFill.above = selection[index] === 1; // 1 if filled above
-            keep.myFill.below = selection[index] === 2; // 2 if filled below
-            result.push(keep);
+            const fill = {
+                above: selection[index] === 1, // 1 if filled above
+                below: selection[index] === 2, // 2 if filled below
+            };
+            if (seg instanceof SegmentBoolLine) {
+                result.push(new SegmentBoolLine(seg.data, fill, log));
+            }
+            else if (seg instanceof SegmentBoolCurve) {
+                result.push(new SegmentBoolCurve(seg.data, fill, log));
+            }
+            else {
+                throw new Error("PolyBool: Unknown SegmentBool type in SegmentSelector");
+            }
         }
     }
     log === null || log === void 0 ? void 0 : log.selected(result);
@@ -722,215 +1436,408 @@ class SegmentSelector {
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //
-//
-// converts a list of segments into a list of regions, while also removing
-// unnecessary verticies
-//
-function SegmentChainer(segments, geo, log) {
+function SegmentChainer(segments, receiver, geo, log) {
     const chains = [];
     const regions = [];
-    for (const seg of segments) {
-        const pt1 = seg.start;
-        const pt2 = seg.end;
-        if (geo.pointsSame(pt1, pt2)) {
+    for (const segb of segments) {
+        let seg = segb.data;
+        const pt1 = seg.start();
+        const pt2 = seg.end();
+        if (seg instanceof SegmentLine && geo.isEqualVec2(pt1, pt2)) {
             console.warn("PolyBool: Warning: Zero-length segment detected; your epsilon is " +
                 "probably too small or too large");
             continue;
         }
         log === null || log === void 0 ? void 0 : log.chainStart(seg);
         // search for two chains that this segment matches
-        const first_match = {
+        const firstMatch = {
             index: 0,
-            matches_head: false,
-            matches_pt1: false,
+            matchesHead: false,
+            matchesPt1: false,
         };
-        const second_match = {
+        const secondMatch = {
             index: 0,
-            matches_head: false,
-            matches_pt1: false,
+            matchesHead: false,
+            matchesPt1: false,
         };
-        let next_match = first_match;
-        function setMatch(index, matches_head, matches_pt1) {
+        let nextMatch = firstMatch;
+        function setMatch(index, matchesHead, matchesPt1) {
             // return true if we've matched twice
-            if (next_match) {
-                next_match.index = index;
-                next_match.matches_head = matches_head;
-                next_match.matches_pt1 = matches_pt1;
+            if (nextMatch) {
+                nextMatch.index = index;
+                nextMatch.matchesHead = matchesHead;
+                nextMatch.matchesPt1 = matchesPt1;
             }
-            if (next_match === first_match) {
-                next_match = second_match;
+            if (nextMatch === firstMatch) {
+                nextMatch = secondMatch;
                 return false;
             }
-            next_match = null;
+            nextMatch = null;
             return true; // we've matched twice, we're done here
         }
         for (let i = 0; i < chains.length; i++) {
             const chain = chains[i];
-            const head = chain[0];
-            const tail = chain[chain.length - 1];
-            if (geo.pointsSame(head, pt1)) {
+            const head = chain[0].start();
+            const tail = chain[chain.length - 1].end();
+            if (geo.isEqualVec2(head, pt1)) {
                 if (setMatch(i, true, true)) {
                     break;
                 }
             }
-            else if (geo.pointsSame(head, pt2)) {
+            else if (geo.isEqualVec2(head, pt2)) {
                 if (setMatch(i, true, false)) {
                     break;
                 }
             }
-            else if (geo.pointsSame(tail, pt1)) {
+            else if (geo.isEqualVec2(tail, pt1)) {
                 if (setMatch(i, false, true)) {
                     break;
                 }
             }
-            else if (geo.pointsSame(tail, pt2)) {
+            else if (geo.isEqualVec2(tail, pt2)) {
                 if (setMatch(i, false, false)) {
                     break;
                 }
             }
         }
-        if (next_match === first_match) {
+        if (nextMatch === firstMatch) {
             // we didn't match anything, so create a new chain
-            chains.push([pt1, pt2]);
-            log === null || log === void 0 ? void 0 : log.chainNew(pt1, pt2);
-            continue;
+            log === null || log === void 0 ? void 0 : log.chainNew(seg);
+            chains.push([seg]);
         }
-        if (next_match === second_match) {
+        else if (nextMatch === secondMatch) {
             // we matched a single chain
-            log === null || log === void 0 ? void 0 : log.chainMatch(first_match.index);
-            // add the other point to the apporpriate end, and check to see if we've closed the
-            // chain into a loop
-            const index = first_match.index;
-            const pt = first_match.matches_pt1 ? pt2 : pt1; // if we matched pt1, then we add pt2, etc
-            const addToHead = first_match.matches_head; // if we matched at head, then add to the head
+            const index = firstMatch.index;
+            log === null || log === void 0 ? void 0 : log.chainMatch(index);
+            // add the other point to the apporpriate end
             const chain = chains[index];
-            let grow = addToHead ? chain[0] : chain[chain.length - 1];
-            const grow2 = addToHead ? chain[1] : chain[chain.length - 2];
-            const oppo = addToHead ? chain[chain.length - 1] : chain[0];
-            const oppo2 = addToHead ? chain[chain.length - 2] : chain[1];
-            if (geo.pointsCollinear(grow2, grow, pt)) {
-                // grow isn't needed because it's directly between grow2 and pt:
-                // grow2 ---grow---> pt
-                if (addToHead) {
-                    log === null || log === void 0 ? void 0 : log.chainRemoveHead(first_match.index, pt);
-                    chain.shift();
+            if (firstMatch.matchesHead) {
+                if (firstMatch.matchesPt1) {
+                    seg = seg.reverse();
+                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg);
+                    chain.unshift(seg);
                 }
                 else {
-                    log === null || log === void 0 ? void 0 : log.chainRemoveTail(first_match.index, pt);
-                    chain.pop();
+                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg);
+                    chain.unshift(seg);
                 }
-                grow = grow2; // old grow is gone... new grow is what grow2 was
             }
-            if (geo.pointsSame(oppo, pt)) {
-                // we're closing the loop, so remove chain from chains
-                chains.splice(index, 1);
-                if (geo.pointsCollinear(oppo2, oppo, grow)) {
-                    // oppo isn't needed because it's directly between oppo2 and grow:
-                    // oppo2 ---oppo--->grow
-                    if (addToHead) {
-                        log === null || log === void 0 ? void 0 : log.chainRemoveTail(first_match.index, grow);
-                        chain.pop();
-                    }
-                    else {
-                        log === null || log === void 0 ? void 0 : log.chainRemoveHead(first_match.index, grow);
+            else {
+                if (firstMatch.matchesPt1) {
+                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg);
+                    chain.push(seg);
+                }
+                else {
+                    seg = seg.reverse();
+                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg);
+                    chain.push(seg);
+                }
+            }
+            // simplify chain
+            if (seg instanceof SegmentLine) {
+                if (firstMatch.matchesHead) {
+                    const next = chain[1];
+                    if (next &&
+                        next instanceof SegmentLine &&
+                        geo.isCollinear(seg.p0, next.p0, next.p1)) {
+                        next.setStart(seg.p0);
+                        log === null || log === void 0 ? void 0 : log.chainSimplifyHead(index, next);
                         chain.shift();
                     }
                 }
-                log === null || log === void 0 ? void 0 : log.chainClose(first_match.index);
-                // we have a closed chain!
-                regions.push(chain);
-                continue;
-            }
-            // not closing a loop, so just add it to the apporpriate side
-            if (addToHead) {
-                log === null || log === void 0 ? void 0 : log.chainAddHead(first_match.index, pt);
-                chain.unshift(pt);
-            }
-            else {
-                log === null || log === void 0 ? void 0 : log.chainAddTail(first_match.index, pt);
-                chain.push(pt);
-            }
-            continue;
-        }
-        // otherwise, we matched two chains, so we need to combine those chains together
-        function reverseChain(index) {
-            log === null || log === void 0 ? void 0 : log.chainReverse(index);
-            chains[index].reverse(); // gee, that's easy
-        }
-        function appendChain(index1, index2) {
-            // index1 gets index2 appended to it, and index2 is removed
-            const chain1 = chains[index1];
-            const chain2 = chains[index2];
-            let tail = chain1[chain1.length - 1];
-            const tail2 = chain1[chain1.length - 2];
-            const head = chain2[0];
-            const head2 = chain2[1];
-            if (geo.pointsCollinear(tail2, tail, head)) {
-                // tail isn't needed because it's directly between tail2 and head
-                // tail2 ---tail---> head
-                log === null || log === void 0 ? void 0 : log.chainRemoveTail(index1, tail);
-                chain1.pop();
-                tail = tail2; // old tail is gone... new tail is what tail2 was
-            }
-            if (geo.pointsCollinear(tail, head, head2)) {
-                // head isn't needed because it's directly between tail and head2
-                // tail ---head---> head2
-                log === null || log === void 0 ? void 0 : log.chainRemoveHead(index2, head);
-                chain2.shift();
-            }
-            log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2);
-            chains[index1] = chain1.concat(chain2);
-            chains.splice(index2, 1);
-        }
-        const F = first_match.index;
-        const S = second_match.index;
-        log === null || log === void 0 ? void 0 : log.chainConnect(F, S);
-        const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
-        if (first_match.matches_head) {
-            if (second_match.matches_head) {
-                if (reverseF) {
-                    // <<<< F <<<< --- >>>> S >>>>
-                    reverseChain(F);
-                    // >>>> F >>>> --- >>>> S >>>>
-                    appendChain(F, S);
-                }
                 else {
-                    // <<<< F <<<< --- >>>> S >>>>
-                    reverseChain(S);
-                    // <<<< F <<<< --- <<<< S <<<<   logically same as:
-                    // >>>> S >>>> --- >>>> F >>>>
-                    appendChain(S, F);
+                    const next = chain[chain.length - 2];
+                    if (next &&
+                        next instanceof SegmentLine &&
+                        geo.isCollinear(next.p0, next.p1, seg.p1)) {
+                        next.setEnd(seg.p1);
+                        log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index, next);
+                        chain.pop();
+                    }
                 }
             }
-            else {
-                // <<<< F <<<< --- <<<< S <<<<   logically same as:
-                // >>>> S >>>> --- >>>> F >>>>
-                appendChain(S, F);
+            // check for closed chain
+            const segS = chain[0];
+            const segE = chain[chain.length - 1];
+            if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
+                if (segS !== segE &&
+                    segS instanceof SegmentLine &&
+                    segE instanceof SegmentLine &&
+                    geo.isCollinear(segS.p1, segS.p0, segE.p0)) {
+                    // closing the chain caused two collinear lines to join, so merge them
+                    segS.setStart(segE.p0);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyClose(index, segS);
+                    chain.pop();
+                }
+                // we have a closed chain!
+                log === null || log === void 0 ? void 0 : log.chainClose(index);
+                chains.splice(index, 1);
+                regions.push(chain);
             }
         }
         else {
-            if (second_match.matches_head) {
-                // >>>> F >>>> --- >>>> S >>>>
-                appendChain(F, S);
+            // otherwise, we matched two chains, so we need to combine those chains together
+            function reverseChain(index) {
+                log === null || log === void 0 ? void 0 : log.chainReverse(index);
+                const newChain = [];
+                for (const s of chains[index]) {
+                    newChain.unshift(s.reverse());
+                }
+                chains[index] = newChain;
             }
-            else {
-                if (reverseF) {
-                    // >>>> F >>>> --- <<<< S <<<<
-                    reverseChain(F);
-                    // <<<< F <<<< --- <<<< S <<<<   logically same as:
-                    // >>>> S >>>> --- >>>> F >>>>
-                    appendChain(S, F);
+            function appendChain(index1, index2) {
+                // index1 gets index2 appended to it, and index2 is removed
+                const chain1 = chains[index1];
+                const chain2 = chains[index2];
+                // add seg to chain1's tail
+                log === null || log === void 0 ? void 0 : log.chainAddTail(index1, seg);
+                chain1.push(seg);
+                // simplify chain1's tail
+                if (seg instanceof SegmentLine) {
+                    const next = chain1[chain1.length - 2];
+                    if (next &&
+                        next instanceof SegmentLine &&
+                        geo.isCollinear(next.p0, next.p1, seg.p1)) {
+                        next.setEnd(seg.p1);
+                        log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index1, next);
+                        chain1.pop();
+                    }
+                }
+                // simplify chain2's head
+                const tail = chain1[chain1.length - 1];
+                const head = chain2[0];
+                if (tail instanceof SegmentLine &&
+                    head instanceof SegmentLine &&
+                    geo.isCollinear(tail.p0, head.p0, head.p1)) {
+                    tail.setEnd(head.p1);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyJoin(index1, index2, tail);
+                    chain2.shift();
+                }
+                log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2);
+                chains[index1] = chain1.concat(chain2);
+                chains.splice(index2, 1);
+            }
+            const F = firstMatch.index;
+            const S = secondMatch.index;
+            log === null || log === void 0 ? void 0 : log.chainConnect(F, S);
+            const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
+            if (firstMatch.matchesHead) {
+                if (secondMatch.matchesHead) {
+                    if (reverseF) {
+                        if (!firstMatch.matchesPt1) {
+                            // <<<< F <<<< <-- >>>> S >>>>
+                            seg = seg.reverse();
+                        }
+                        // <<<< F <<<< --> >>>> S >>>>
+                        reverseChain(F);
+                        // >>>> F >>>> --> >>>> S >>>>
+                        appendChain(F, S);
+                    }
+                    else {
+                        if (firstMatch.matchesPt1) {
+                            // <<<< F <<<< --> >>>> S >>>>
+                            seg = seg.reverse();
+                        }
+                        // <<<< F <<<< <-- >>>> S >>>>
+                        reverseChain(S);
+                        // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+                        // >>>> S >>>> --> >>>> F >>>>
+                        appendChain(S, F);
+                    }
                 }
                 else {
-                    // >>>> F >>>> --- <<<< S <<<<
-                    reverseChain(S);
-                    // >>>> F >>>> --- >>>> S >>>>
+                    if (firstMatch.matchesPt1) {
+                        // <<<< F <<<< --> >>>> S >>>>
+                        seg = seg.reverse();
+                    }
+                    // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+                    // >>>> S >>>> --> >>>> F >>>>
+                    appendChain(S, F);
+                }
+            }
+            else {
+                if (secondMatch.matchesHead) {
+                    if (!firstMatch.matchesPt1) {
+                        // >>>> F >>>> <-- >>>> S >>>>
+                        seg = seg.reverse();
+                    }
+                    // >>>> F >>>> --> >>>> S >>>>
                     appendChain(F, S);
+                }
+                else {
+                    if (reverseF) {
+                        if (firstMatch.matchesPt1) {
+                            // >>>> F >>>> --> <<<< S <<<<
+                            seg = seg.reverse();
+                        }
+                        // >>>> F >>>> <-- <<<< S <<<<
+                        reverseChain(F);
+                        // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+                        // >>>> S >>>> --> >>>> F >>>>
+                        appendChain(S, F);
+                    }
+                    else {
+                        if (!firstMatch.matchesPt1) {
+                            // >>>> F >>>> <-- <<<< S <<<<
+                            seg = seg.reverse();
+                        }
+                        // >>>> F >>>> --> <<<< S <<<<
+                        reverseChain(S);
+                        // >>>> F >>>> --> >>>> S >>>>
+                        appendChain(F, S);
+                    }
                 }
             }
         }
     }
-    return regions;
+    for (const region of regions) {
+        receiver.beginPath();
+        for (let i = 0; i < region.length; i++) {
+            const seg = region[i];
+            if (i === 0) {
+                const p0 = seg.start();
+                receiver.moveTo(p0[0], p0[1]);
+            }
+            if (seg instanceof SegmentLine) {
+                receiver.lineTo(seg.p1[0], seg.p1[1]);
+            }
+            else if (seg instanceof SegmentCurve) {
+                receiver.bezierCurveTo(seg.p1[0], seg.p1[1], seg.p2[0], seg.p2[1], seg.p3[0], seg.p3[1]);
+            }
+            else {
+                throw new Error("PolyBool: Unknown segment instance");
+            }
+        }
+        receiver.closePath();
+    }
+}
+
+//
+// polybool - Boolean operations on polygons (union, intersection, etc)
+// by Sean Connelly (@velipso), https://sean.fun
+// Project Home: https://github.com/velipso/polybool
+// SPDX-License-Identifier: 0BSD
+//
+class Shape {
+    constructor(segments, geo, log = null) {
+        this.pathState = { kind: "beginPath" };
+        this.geo = geo;
+        this.log = log;
+        if (segments) {
+            this.resultState = { final: true, segments };
+        }
+        else {
+            this.resultState = {
+                final: false,
+                selfIntersect: new Intersecter(true, this.geo, this.log),
+            };
+        }
+    }
+    beginPath() {
+        return this.endPath();
+    }
+    moveTo(x, y) {
+        if (this.resultState.final) {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        if (this.pathState.kind !== "beginPath") {
+            this.beginPath();
+        }
+        const current = [x, y];
+        this.pathState = {
+            kind: "moveTo",
+            start: current,
+            current,
+        };
+        return this;
+    }
+    lineTo(x, y) {
+        if (this.resultState.final) {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        if (this.pathState.kind !== "moveTo") {
+            throw new Error("PolyBool: Must call moveTo prior to calling lineTo");
+        }
+        const current = [x, y];
+        this.resultState.selfIntersect.addLine(this.pathState.current, current);
+        this.pathState.current = current;
+        return this;
+    }
+    bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
+        if (this.resultState.final) {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        if (this.pathState.kind !== "moveTo") {
+            throw new Error("PolyBool: Must call moveTo prior to calling bezierCurveTo");
+        }
+        const current = [x, y];
+        this.resultState.selfIntersect.addCurve(this.pathState.current, [cp1x, cp1y], [cp2x, cp2y], current);
+        this.pathState.current = current;
+        return this;
+    }
+    closePath() {
+        if (this.resultState.final) {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        // close with a line if needed
+        if (this.pathState.kind === "moveTo" &&
+            !this.geo.isEqualVec2(this.pathState.start, this.pathState.current)) {
+            this.lineTo(this.pathState.start[0], this.pathState.start[1]);
+        }
+        return this.endPath();
+    }
+    endPath() {
+        if (this.resultState.final) {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        this.pathState = { kind: "beginPath" };
+        return this;
+    }
+    selfIntersect() {
+        if (!this.resultState.final) {
+            this.resultState = {
+                final: true,
+                segments: this.resultState.selfIntersect.calculate(),
+            };
+        }
+        return this.resultState.segments;
+    }
+    output(receiver) {
+        SegmentChainer(this.selfIntersect(), receiver, this.geo, this.log);
+        return receiver;
+    }
+    combine(shape) {
+        const int = new Intersecter(false, this.geo, this.log);
+        for (const seg of this.selfIntersect()) {
+            int.addSegment(copySegmentBool(seg, this.log), true);
+        }
+        for (const seg of shape.selfIntersect()) {
+            int.addSegment(copySegmentBool(seg, this.log), false);
+        }
+        return new ShapeCombined(int.calculate(), this.geo, this.log);
+    }
+}
+class ShapeCombined {
+    constructor(segments, geo, log = null) {
+        this.geo = geo;
+        this.segments = segments;
+        this.log = log;
+    }
+    union() {
+        return new Shape(SegmentSelector.union(this.segments, this.log), this.geo, this.log);
+    }
+    intersect() {
+        return new Shape(SegmentSelector.intersect(this.segments, this.log), this.geo, this.log);
+    }
+    difference() {
+        return new Shape(SegmentSelector.difference(this.segments, this.log), this.geo, this.log);
+    }
+    differenceRev() {
+        return new Shape(SegmentSelector.differenceRev(this.segments, this.log), this.geo, this.log);
+    }
+    xor() {
+        return new Shape(SegmentSelector.xor(this.segments, this.log), this.geo, this.log);
+    }
 }
 
 //
@@ -951,15 +1858,20 @@ class BuildLog {
             data: JSON.parse(JSON.stringify(data)),
         });
     }
+    info(msg, data) {
+        this.push("info", { msg, data });
+    }
     segmentId() {
         return this.nextSegmentId++;
     }
     checkIntersection(seg1, seg2) {
         this.push("check", { seg1, seg2 });
     }
-    segmentChop(seg, p) {
+    segmentDivide(seg, p) {
         this.push("div_seg", { seg, p });
-        this.push("chop", { seg, p });
+    }
+    segmentChop(seg) {
+        this.push("chop", { seg });
     }
     statusRemove(seg) {
         this.push("pop_seg", { seg });
@@ -991,14 +1903,8 @@ class BuildLog {
     chainStart(seg) {
         this.push("chain_start", { seg });
     }
-    chainRemoveHead(index, p) {
-        this.push("chain_rem_head", { index, p });
-    }
-    chainRemoveTail(index, p) {
-        this.push("chain_rem_tail", { index, p });
-    }
-    chainNew(p1, p2) {
-        this.push("chain_new", { p1, p2 });
+    chainNew(seg) {
+        this.push("chain_new", { seg });
     }
     chainMatch(index) {
         this.push("chain_match", { index });
@@ -1006,11 +1912,23 @@ class BuildLog {
     chainClose(index) {
         this.push("chain_close", { index });
     }
-    chainAddHead(index, p) {
-        this.push("chain_add_head", { index, p });
+    chainAddHead(index, seg) {
+        this.push("chain_add_head", { index, seg });
     }
-    chainAddTail(index, p) {
-        this.push("chain_add_tail", { index, p });
+    chainAddTail(index, seg) {
+        this.push("chain_add_tail", { index, seg });
+    }
+    chainSimplifyHead(index, seg) {
+        this.push("chain_simp_head", { index, seg });
+    }
+    chainSimplifyTail(index, seg) {
+        this.push("chain_simp_tail", { index, seg });
+    }
+    chainSimplifyClose(index, seg) {
+        this.push("chain_simp_close", { index, seg });
+    }
+    chainSimplifyJoin(index1, index2, seg) {
+        this.push("chain_simp_join", { index1, index2, seg });
     }
     chainConnect(index1, index2) {
         this.push("chain_con", { index1, index2 });
@@ -1033,9 +1951,12 @@ class BuildLog {
 // SPDX-License-Identifier: 0BSD
 //
 class PolyBool {
-    constructor(geo) {
-        this.log = null;
+    constructor(geo = new GeometryEpsilon(), log = null) {
         this.geo = geo;
+        this.log = log;
+    }
+    shape() {
+        return new Shape(null, this.geo, this.log);
     }
     buildLog(enable) {
         var _a;
@@ -1043,64 +1964,100 @@ class PolyBool {
         return (_a = this.log) === null || _a === void 0 ? void 0 : _a.list;
     }
     segments(poly) {
-        const i = new Intersecter(true, this.geo, this.log);
+        const shape = this.shape();
         for (const region of poly.regions) {
-            i.addRegion(region);
+            shape.beginPath();
+            for (let i = 0; i < region.length; i++) {
+                const [x, y] = region[i];
+                if (i === 0) {
+                    shape.moveTo(x, y);
+                }
+                else {
+                    shape.lineTo(x, y);
+                }
+            }
+            shape.closePath();
         }
-        return {
-            segments: i.calculate(poly.inverted, false),
-            inverted: poly.inverted,
-        };
+        return { shape, inverted: poly.inverted };
     }
     combine(segments1, segments2) {
-        const i = new Intersecter(false, this.geo, this.log);
-        for (const seg of segments1.segments) {
-            i.addSegment(new Segment(seg.start, seg.end, seg, this.log), true);
-        }
-        for (const seg of segments2.segments) {
-            i.addSegment(new Segment(seg.start, seg.end, seg, this.log), false);
-        }
         return {
-            combined: i.calculate(segments1.inverted, segments2.inverted),
+            shape: segments1.shape.combine(segments2.shape),
             inverted1: segments1.inverted,
             inverted2: segments2.inverted,
         };
     }
     selectUnion(combined) {
         return {
-            segments: SegmentSelector.union(combined.combined, this.log),
+            shape: combined.inverted1
+                ? combined.inverted2
+                    ? combined.shape.intersect()
+                    : combined.shape.difference()
+                : combined.inverted2
+                    ? combined.shape.differenceRev()
+                    : combined.shape.union(),
             inverted: combined.inverted1 || combined.inverted2,
         };
     }
     selectIntersect(combined) {
         return {
-            segments: SegmentSelector.intersect(combined.combined, this.log),
+            shape: combined.inverted1
+                ? combined.inverted2
+                    ? combined.shape.union()
+                    : combined.shape.differenceRev()
+                : combined.inverted2
+                    ? combined.shape.difference()
+                    : combined.shape.intersect(),
             inverted: combined.inverted1 && combined.inverted2,
         };
     }
     selectDifference(combined) {
         return {
-            segments: SegmentSelector.difference(combined.combined, this.log),
+            shape: combined.inverted1
+                ? combined.inverted2
+                    ? combined.shape.differenceRev()
+                    : combined.shape.union()
+                : combined.inverted2
+                    ? combined.shape.intersect()
+                    : combined.shape.difference(),
             inverted: combined.inverted1 && !combined.inverted2,
         };
     }
     selectDifferenceRev(combined) {
         return {
-            segments: SegmentSelector.differenceRev(combined.combined, this.log),
+            shape: combined.inverted1
+                ? combined.inverted2
+                    ? combined.shape.difference()
+                    : combined.shape.intersect()
+                : combined.inverted2
+                    ? combined.shape.union()
+                    : combined.shape.differenceRev(),
             inverted: !combined.inverted1 && combined.inverted2,
         };
     }
     selectXor(combined) {
         return {
-            segments: SegmentSelector.xor(combined.combined, this.log),
+            shape: combined.shape.xor(),
             inverted: combined.inverted1 !== combined.inverted2,
         };
     }
     polygon(segments) {
-        return {
-            regions: SegmentChainer(segments.segments, this.geo, this.log),
-            inverted: segments.inverted,
+        const regions = [];
+        const receiver = {
+            beginPath: () => {
+                regions.push([]);
+            },
+            moveTo: () => { },
+            lineTo: (x, y) => {
+                regions[regions.length - 1].push([x, y]);
+            },
+            bezierCurveTo: () => {
+                throw new Error("PolyBool: polybool.polygon() does not support bezier curves");
+            },
+            closePath: () => { },
         };
+        segments.shape.output(receiver);
+        return { regions, inverted: segments.inverted };
     }
     // helper functions for common operations
     union(poly1, poly2) {
@@ -1139,13 +2096,24 @@ class PolyBool {
         return this.polygon(seg3);
     }
 }
-const polybool = new PolyBool(new GeometryEpsilon());
+const polybool = new PolyBool();
 
 exports.BuildLog = BuildLog;
 exports.GeometryEpsilon = GeometryEpsilon;
 exports.Intersecter = Intersecter;
 exports.PolyBool = PolyBool;
-exports.Segment = Segment;
+exports.SegmentBase = SegmentBase;
 exports.SegmentChainer = SegmentChainer;
+exports.SegmentCurve = SegmentCurve;
+exports.SegmentLine = SegmentLine;
 exports.SegmentSelector = SegmentSelector;
+exports.SegmentTValuePairsBuilder = SegmentTValuePairsBuilder;
+exports.SegmentTValuesBuilder = SegmentTValuesBuilder;
+exports.Shape = Shape;
+exports.ShapeCombined = ShapeCombined;
 exports.default = polybool;
+exports.projectPointOntoSegmentLine = projectPointOntoSegmentLine;
+exports.segmentCurveIntersectSegmentCurve = segmentCurveIntersectSegmentCurve;
+exports.segmentLineIntersectSegmentCurve = segmentLineIntersectSegmentCurve;
+exports.segmentLineIntersectSegmentLine = segmentLineIntersectSegmentLine;
+exports.segmentsIntersect = segmentsIntersect;

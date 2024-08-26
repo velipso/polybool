@@ -59,6 +59,76 @@ const tests: { name: string, func(): void }[] = [
         }
       );
     }
+  },
+  {
+    name: 'example',
+    func: () => {
+      const log: any[] = [];
+      const receiver = {
+        beginPath: () => { log.push('beginPath'); },
+        moveTo: (x: number, y: number) => { log.push('moveTo', x, y); },
+        lineTo: (x: number, y: number) => { log.push('lineTo', x, y); },
+        bezierCurveTo: (
+          cp1x: number,
+          cp1y: number,
+          cp2x: number,
+          cp2y: number,
+          x: number,
+          y: number,
+        ) => { log.push('bezierCurveTo', cp1x, cp1y, cp2x, cp2y, x, y); },
+        closePath: () => { log.push('closePath'); }
+      }
+
+      polybool.shape()
+        .beginPath()
+        .moveTo(50, 50)
+        .lineTo(150, 150)
+        .lineTo(190, 50)
+        .closePath()
+        .beginPath()
+        .moveTo(130, 50)
+        .lineTo(290, 150)
+        .lineTo(290, 50)
+        .closePath()
+        .combine(
+          polybool.shape()
+            .beginPath()
+            .moveTo(110, 20)
+            .lineTo(110, 110)
+            .lineTo(20, 20)
+            .closePath()
+            .beginPath()
+            .moveTo(130, 170)
+            .lineTo(130, 20)
+            .lineTo(260, 20)
+            .lineTo(260, 170)
+            .closePath()
+        )
+        .intersect()
+        .output(receiver);
+      assertEqual(log, [
+        'beginPath',
+        'moveTo', 110, 110,
+        'lineTo', 50, 50,
+        'lineTo', 110, 50,
+        'lineTo', 110, 110,
+        'closePath',
+        'beginPath',
+        'moveTo', 150, 150,
+        'lineTo', 178, 80,
+        'lineTo', 130, 50,
+        'lineTo', 130, 130,
+        'lineTo', 150, 150,
+        'closePath',
+        'beginPath',
+        'moveTo', 260, 131.25,
+        'lineTo', 178, 80,
+        'lineTo', 190, 50,
+        'lineTo', 260, 50,
+        'lineTo', 260, 131.25,
+        'closePath',
+      ]);
+    }
   }
 ];
 

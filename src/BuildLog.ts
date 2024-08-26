@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import { type Segment } from "./Intersecter";
-import { type Point } from "./Geometry";
+import { type SegmentBool } from "./Intersecter";
+import { type Vec2 } from "./Geometry";
+import { type Segment } from "./Segment";
 
 export default class BuildLog {
   list: Array<{ type: string; data: unknown }> = [];
@@ -20,40 +21,55 @@ export default class BuildLog {
     });
   }
 
+  info(msg: string, data?: any) {
+    this.push("info", { msg, data });
+  }
+
   segmentId() {
     return this.nextSegmentId++;
   }
 
-  checkIntersection(seg1: Segment, seg2: Segment) {
+  checkIntersection(seg1: SegmentBool, seg2: SegmentBool) {
     this.push("check", { seg1, seg2 });
   }
 
-  segmentChop(seg: Segment, p: Point) {
+  segmentDivide(seg: SegmentBool, p: Vec2) {
     this.push("div_seg", { seg, p });
-    this.push("chop", { seg, p });
   }
 
-  statusRemove(seg: Segment) {
+  segmentChop(seg: SegmentBool) {
+    this.push("chop", { seg });
+  }
+
+  statusRemove(seg: SegmentBool) {
     this.push("pop_seg", { seg });
   }
 
-  segmentUpdate(seg: Segment) {
+  segmentUpdate(seg: SegmentBool) {
     this.push("seg_update", { seg });
   }
 
-  segmentNew(seg: Segment, primary: boolean) {
+  segmentNew(seg: SegmentBool, primary: boolean) {
     this.push("new_seg", { seg, primary });
   }
 
-  tempStatus(seg: Segment, above: Segment | false, below: Segment | false) {
+  tempStatus(
+    seg: SegmentBool,
+    above: SegmentBool | false,
+    below: SegmentBool | false,
+  ) {
     this.push("temp_status", { seg, above, below });
   }
 
-  rewind(seg: Segment) {
+  rewind(seg: SegmentBool) {
     this.push("rewind", { seg });
   }
 
-  status(seg: Segment, above: Segment | false, below: Segment | false) {
+  status(
+    seg: SegmentBool,
+    above: SegmentBool | false,
+    below: SegmentBool | false,
+  ) {
     this.push("status", { seg, above, below });
   }
 
@@ -64,7 +80,7 @@ export default class BuildLog {
     }
   }
 
-  selected(segs: Segment[]) {
+  selected(segs: SegmentBool[]) {
     this.push("selected", { segs });
   }
 
@@ -72,16 +88,8 @@ export default class BuildLog {
     this.push("chain_start", { seg });
   }
 
-  chainRemoveHead(index: number, p: Point) {
-    this.push("chain_rem_head", { index, p });
-  }
-
-  chainRemoveTail(index: number, p: Point) {
-    this.push("chain_rem_tail", { index, p });
-  }
-
-  chainNew(p1: Point, p2: Point) {
-    this.push("chain_new", { p1, p2 });
+  chainNew(seg: Segment) {
+    this.push("chain_new", { seg });
   }
 
   chainMatch(index: number) {
@@ -92,12 +100,28 @@ export default class BuildLog {
     this.push("chain_close", { index });
   }
 
-  chainAddHead(index: number, p: Point) {
-    this.push("chain_add_head", { index, p });
+  chainAddHead(index: number, seg: Segment) {
+    this.push("chain_add_head", { index, seg });
   }
 
-  chainAddTail(index: number, p: Point) {
-    this.push("chain_add_tail", { index, p });
+  chainAddTail(index: number, seg: Segment) {
+    this.push("chain_add_tail", { index, seg });
+  }
+
+  chainSimplifyHead(index: number, seg: Segment) {
+    this.push("chain_simp_head", { index, seg });
+  }
+
+  chainSimplifyTail(index: number, seg: Segment) {
+    this.push("chain_simp_tail", { index, seg });
+  }
+
+  chainSimplifyClose(index: number, seg: Segment) {
+    this.push("chain_simp_close", { index, seg });
+  }
+
+  chainSimplifyJoin(index1: number, index2: number, seg: Segment) {
+    this.push("chain_simp_join", { index1, index2, seg });
   }
 
   chainConnect(index1: number, index2: number) {

@@ -5,45 +5,58 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import { type Point, type Geometry, GeometryEpsilon } from "./Geometry";
-import { Segment, Intersecter } from "./Intersecter";
+import { type Vec2, type Geometry, GeometryEpsilon } from "./Geometry";
+import { type SegmentBool, Intersecter } from "./Intersecter";
 import { SegmentSelector } from "./SegmentSelector";
-import SegmentChainer from "./SegmentChainer";
+import SegmentChainer, { type IPolyBoolReceiver } from "./SegmentChainer";
+import { Shape, ShapeCombined } from "./Shape";
 import BuildLog from "./BuildLog";
+export * from "./Segment";
 
 export {
-  type Point,
+  type Vec2,
   Geometry,
   GeometryEpsilon,
-  Segment,
+  type SegmentBool,
   Intersecter,
   SegmentSelector,
   SegmentChainer,
+  type IPolyBoolReceiver,
+  Shape,
+  ShapeCombined,
   BuildLog,
 };
 
 export interface Polygon {
-  regions: Point[][];
+  regions: Vec2[][];
   inverted: boolean;
 }
 
 export interface Segments {
-  segments: Segment[];
+  shape: Shape;
   inverted: boolean;
 }
 
 export interface CombinedSegments {
-  combined: Segment[];
+  shape: ShapeCombined;
   inverted1: boolean;
   inverted2: boolean;
 }
 
 export class PolyBool {
   private readonly geo: Geometry;
-  private log: BuildLog | null = null;
+  private log: BuildLog | null;
 
-  constructor(geo: Geometry) {
+  constructor(
+    geo: Geometry = new GeometryEpsilon(),
+    log: BuildLog | null = null,
+  ) {
     this.geo = geo;
+    this.log = log;
+  }
+
+  shape() {
+    return new Shape(null, this.geo, this.log);
   }
 
   buildLog(enable: boolean) {
@@ -52,26 +65,25 @@ export class PolyBool {
   }
 
   segments(poly: Polygon): Segments {
-    const i = new Intersecter(true, this.geo, this.log);
+    const shape = this.shape();
     for (const region of poly.regions) {
-      i.addRegion(region);
+      shape.beginPath();
+      for (let i = 0; i < region.length; i++) {
+        const [x, y] = region[i];
+        if (i === 0) {
+          shape.moveTo(x, y);
+        } else {
+          shape.lineTo(x, y);
+        }
+      }
+      shape.closePath();
     }
-    return {
-      segments: i.calculate(poly.inverted, false),
-      inverted: poly.inverted,
-    };
+    return { shape, inverted: poly.inverted };
   }
 
   combine(segments1: Segments, segments2: Segments): CombinedSegments {
-    const i = new Intersecter(false, this.geo, this.log);
-    for (const seg of segments1.segments) {
-      i.addSegment(new Segment(seg.start, seg.end, seg, this.log), true);
-    }
-    for (const seg of segments2.segments) {
-      i.addSegment(new Segment(seg.start, seg.end, seg, this.log), false);
-    }
     return {
-      combined: i.calculate(segments1.inverted, segments2.inverted),
+      shape: segments1.shape.combine(segments2.shape),
       inverted1: segments1.inverted,
       inverted2: segments2.inverted,
     };
@@ -79,44 +91,82 @@ export class PolyBool {
 
   selectUnion(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.union(combined.combined, this.log),
+      shape: combined.inverted1
+        ? combined.inverted2
+          ? combined.shape.intersect()
+          : combined.shape.difference()
+        : combined.inverted2
+          ? combined.shape.differenceRev()
+          : combined.shape.union(),
       inverted: combined.inverted1 || combined.inverted2,
     };
   }
 
   selectIntersect(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.intersect(combined.combined, this.log),
+      shape: combined.inverted1
+        ? combined.inverted2
+          ? combined.shape.union()
+          : combined.shape.differenceRev()
+        : combined.inverted2
+          ? combined.shape.difference()
+          : combined.shape.intersect(),
       inverted: combined.inverted1 && combined.inverted2,
     };
   }
 
   selectDifference(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.difference(combined.combined, this.log),
+      shape: combined.inverted1
+        ? combined.inverted2
+          ? combined.shape.differenceRev()
+          : combined.shape.union()
+        : combined.inverted2
+          ? combined.shape.intersect()
+          : combined.shape.difference(),
       inverted: combined.inverted1 && !combined.inverted2,
     };
   }
 
   selectDifferenceRev(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.differenceRev(combined.combined, this.log),
+      shape: combined.inverted1
+        ? combined.inverted2
+          ? combined.shape.difference()
+          : combined.shape.intersect()
+        : combined.inverted2
+          ? combined.shape.union()
+          : combined.shape.differenceRev(),
       inverted: !combined.inverted1 && combined.inverted2,
     };
   }
 
   selectXor(combined: CombinedSegments): Segments {
     return {
-      segments: SegmentSelector.xor(combined.combined, this.log),
+      shape: combined.shape.xor(),
       inverted: combined.inverted1 !== combined.inverted2,
     };
   }
 
   polygon(segments: Segments): Polygon {
-    return {
-      regions: SegmentChainer(segments.segments, this.geo, this.log),
-      inverted: segments.inverted,
+    const regions: Vec2[][] = [];
+    const receiver = {
+      beginPath: () => {
+        regions.push([]);
+      },
+      moveTo: () => {},
+      lineTo: (x: number, y: number) => {
+        regions[regions.length - 1].push([x, y]);
+      },
+      bezierCurveTo: () => {
+        throw new Error(
+          "PolyBool: polybool.polygon() does not support bezier curves",
+        );
+      },
+      closePath: () => {},
     };
+    segments.shape.output(receiver);
+    return { regions, inverted: segments.inverted };
   }
 
   // helper functions for common operations
@@ -161,6 +211,6 @@ export class PolyBool {
   }
 }
 
-const polybool = new PolyBool(new GeometryEpsilon());
+const polybool = new PolyBool();
 
 export default polybool;

@@ -5,47 +5,72 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import { List } from "./List";
-import { type Point, type Geometry, AlongIntersection } from "./Geometry";
+import { type Vec2, type Geometry } from "./Geometry";
 import type BuildLog from "./BuildLog";
+import {
+  type Segment,
+  SegmentLine,
+  SegmentCurve,
+  segmentsIntersect,
+} from "./Segment";
 
-interface Fill {
+export interface SegmentBoolFill {
   above: boolean | null;
   below: boolean | null;
 }
 
-export class Segment {
+export interface ListBoolTransition<T> {
+  before: T | null;
+  after: T | null;
+  insert: (node: T) => T;
+}
+
+export class SegmentBoolBase<T> {
   id: number;
-  start: Point;
-  end: Point;
-  myFill: Fill;
-  otherFill: Fill | null = null;
+  data: T;
+  myFill: SegmentBoolFill;
+  otherFill: SegmentBoolFill | null = null;
 
   constructor(
-    start: Point,
-    end: Point,
-    copyMyFill: Segment | null,
-    log: BuildLog | null,
+    data: T,
+    fill: SegmentBoolFill | null = null,
+    log: BuildLog | null = null,
   ) {
     this.id = log?.segmentId() ?? -1;
-    this.start = start;
-    this.end = end;
+    this.data = data;
     this.myFill = {
-      above: copyMyFill ? copyMyFill.myFill.above : null,
-      below: copyMyFill ? copyMyFill.myFill.below : null,
+      above: fill?.above ?? null,
+      below: fill?.below ?? null,
     };
   }
 }
 
-class Event {
-  isStart: boolean;
-  p: Point;
-  seg: Segment;
-  primary: boolean;
-  other!: Event;
-  status: Event | null = null;
+export class SegmentBoolLine extends SegmentBoolBase<SegmentLine> {}
+export class SegmentBoolCurve extends SegmentBoolBase<SegmentCurve> {}
 
-  constructor(isStart: boolean, p: Point, seg: Segment, primary: boolean) {
+export type SegmentBool = SegmentBoolLine | SegmentBoolCurve;
+
+export function copySegmentBool(
+  seg: SegmentBool,
+  log: BuildLog | null,
+): SegmentBool {
+  if (seg instanceof SegmentBoolLine) {
+    return new SegmentBoolLine(seg.data, seg.myFill, log);
+  } else if (seg instanceof SegmentBoolCurve) {
+    return new SegmentBoolCurve(seg.data, seg.myFill, log);
+  }
+  throw new Error("PolyBool: Unknown SegmentBool in copySegmentBool");
+}
+
+export class EventBool {
+  isStart: boolean;
+  p: Vec2;
+  seg: SegmentBool;
+  primary: boolean;
+  other!: EventBool;
+  status: EventBool | null = null;
+
+  constructor(isStart: boolean, p: Vec2, seg: SegmentBool, primary: boolean) {
     this.isStart = isStart;
     this.p = p;
     this.seg = seg;
@@ -53,11 +78,65 @@ class Event {
   }
 }
 
+export class ListBool<T> {
+  readonly nodes: T[] = [];
+
+  remove(node: T) {
+    const i = this.nodes.indexOf(node);
+    if (i >= 0) {
+      this.nodes.splice(i, 1);
+    }
+  }
+
+  getIndex(node: T) {
+    return this.nodes.indexOf(node);
+  }
+
+  isEmpty() {
+    return this.nodes.length <= 0;
+  }
+
+  getHead() {
+    return this.nodes[0];
+  }
+
+  removeHead() {
+    this.nodes.shift();
+  }
+
+  insertBefore(node: T, check: (node: T) => number) {
+    this.findTransition(node, check).insert(node);
+  }
+
+  findTransition(node: T, check: (node: T) => number): ListBoolTransition<T> {
+    // bisect to find the transition point
+    const compare = (a: T, b: T) => check(b) - check(a);
+    let i = 0;
+    let high = this.nodes.length;
+    while (i < high) {
+      const mid = (i + high) >> 1;
+      if (compare(this.nodes[mid], node) > 0) {
+        high = mid;
+      } else {
+        i = mid + 1;
+      }
+    }
+    return {
+      before: i <= 0 ? null : this.nodes[i - 1] ?? null,
+      after: this.nodes[i] ?? null,
+      insert: (node: T) => {
+        this.nodes.splice(i, 0, node);
+        return node;
+      },
+    };
+  }
+}
+
 export class Intersecter {
   private readonly selfIntersection: boolean;
   private readonly geo: Geometry;
-  private readonly events = new List<Event>();
-  private readonly status = new List<Event>();
+  private readonly events = new ListBool<EventBool>();
+  private readonly status = new ListBool<EventBool>();
   private readonly log: BuildLog | null;
 
   constructor(
@@ -71,42 +150,41 @@ export class Intersecter {
   }
 
   compareEvents(
-    p1_isStart: boolean,
-    p1_1: Point,
-    p1_2: Point,
-    p2_isStart: boolean,
-    p2_1: Point,
-    p2_2: Point,
+    aStart: boolean,
+    a1: Vec2,
+    a2: Vec2,
+    aSeg: Segment,
+    bStart: boolean,
+    b1: Vec2,
+    b2: Vec2,
+    bSeg: Segment,
   ): number {
     // compare the selected points first
-    const comp = this.geo.pointsCompare(p1_1, p2_1);
+    const comp = this.geo.compareVec2(a1, b1);
     if (comp !== 0) {
       return comp;
     }
     // the selected points are the same
 
-    if (this.geo.pointsSame(p1_2, p2_2)) {
+    if (
+      aSeg instanceof SegmentLine &&
+      bSeg instanceof SegmentLine &&
+      this.geo.isEqualVec2(a2, b2)
+    ) {
       // if the non-selected points are the same too...
       return 0; // then the segments are equal
     }
 
-    if (p1_isStart !== p2_isStart) {
+    if (aStart !== bStart) {
       // if one is a start and the other isn't...
-      return p1_isStart ? 1 : -1; // favor the one that isn't the start
+      return aStart ? 1 : -1; // favor the one that isn't the start
     }
 
-    // otherwise, we'll have to calculate which one is below the other manually
-    return this.geo.pointAboveOrOnLine(
-      p1_2,
-      p2_isStart ? p2_1 : p2_2, // order matters
-      p2_isStart ? p2_2 : p2_1,
-    )
-      ? 1
-      : -1;
+    return this.compareSegments(bSeg, aSeg);
   }
 
-  addEvent(ev: Event) {
-    this.events.insertBefore(ev, (here: Event) => {
+  addEvent(ev: EventBool) {
+    this.events.insertBefore(ev, (here: EventBool) => {
       if (here === ev) {
         return 0;
       }
@@ -114,40 +192,47 @@ export class Intersecter {
         ev.isStart,
         ev.p,
         ev.other.p,
+        ev.seg.data,
         here.isStart,
         here.p,
         here.other.p,
+        here.seg.data,
       );
     });
   }
 
-  divideEvent(ev: Event, p: Point) {
-    const ns = new Segment(p, ev.seg.end, ev.seg, this.log);
+  divideEvent(ev: EventBool, t: number, p: Vec2) {
+    this.log?.segmentDivide(ev.seg, p);
+
+    const [left, right] = ev.seg.data.split([t]) as [Segment, Segment];
+
+    // set the *exact* intersection point
+    left.setEnd(p);
+    right.setStart(p);
+
+    const ns =
+      right instanceof SegmentLine
+        ? new SegmentBoolLine(right, ev.seg.myFill, this.log)
+        : right instanceof SegmentCurve
+          ? new SegmentBoolCurve(right, ev.seg.myFill, this.log)
+          : null;
+    if (!ns) {
+      throw new Error("PolyBool: Unknown segment data in divideEvent");
+    }
     // slides an end backwards
     //   (start)------------(end)    to:
     //   (start)---(end)
-    this.log?.segmentChop(ev.seg, p);
     this.events.remove(ev.other);
-    ev.seg.end = p;
+    ev.seg.data = left;
+    this.log?.segmentChop(ev.seg);
     ev.other.p = p;
     this.addEvent(ev.other);
     return this.addSegment(ns, ev.primary);
   }
 
-  newSegment(p1: Point, p2: Point): Segment | null {
-    const forward = this.geo.pointsCompare(p1, p2);
-    if (forward === 0) {
-      // points are equal, so we have a zero-length segment
-      return null; // skip it
-    }
-    return forward < 0
-      ? new Segment(p1, p2, null, this.log)
-      : new Segment(p2, p1, null, this.log);
-  }
-
-  addSegment(seg: Segment, primary: boolean) {
-    const evStart = new Event(true, seg.start, seg, primary);
-    const evEnd = new Event(false, seg.end, seg, primary);
+  addSegment(seg: SegmentBool, primary: boolean) {
+    const evStart = new EventBool(true, seg.data.start(), seg, primary);
+    const evEnd = new EventBool(false, seg.data.end(), seg, primary);
     evStart.other = evEnd;
     evEnd.other = evStart;
     this.addEvent(evStart);
@@ -155,143 +240,277 @@ export class Intersecter {
     return evStart;
   }
 
-  addRegion(region: Point[]) {
+  addLine(from: Vec2, to: Vec2, primary = true) {
+    const f = this.geo.compareVec2(from, to);
+    if (f === 0) {
+      // points are equal, so we have a zero-length segment
+      return; // skip it
+    }
+    this.addSegment(
+      new SegmentBoolLine(
+        new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo),
+        null,
+        this.log,
+      ),
+      primary,
+    );
+  }
+
+  addCurve(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2, primary = true) {
+    const original = new SegmentCurve(from, c1, c2, to, this.geo);
+    const curves = original.split(original.inflectionTValues());
+    for (const curve of curves) {
+      const f = this.geo.compareVec2(curve.start(), curve.end());
+      if (f === 0) {
+        // points are equal AFTER splitting... this only happens for zero-length segments
+        continue; // skip it
+      }
+      // convert horizontal/vertical curves to lines
+      const line = curve.toLine();
+      if (line) {
+        this.addLine(line.p0, line.p1, primary);
+      } else {
+        this.addSegment(
+          new SegmentBoolCurve(f < 0 ? curve : curve.reverse(), null, this.log),
+          primary,
+        );
+      }
+    }
+  }
+
+  addRegion(region: Vec2[]) {
     // regions are a list of points:
     //  [ [0, 0], [100, 0], [50, 100] ]
     // you can add multiple regions before running calculate
-    let pt1: Point;
-    let pt2 = region[region.length - 1];
+    // regions are a list of points:
+    //  [ [0, 0], [100, 0], [50, 100] ]
+    // you can add multiple regions before running calculate
+    let p1: Vec2;
+    let p2 = region[region.length - 1];
     for (let i = 0; i < region.length; i++) {
-      pt1 = pt2;
-      pt2 = region[i];
-      const seg = this.newSegment(pt1, pt2);
-      if (seg) {
-        this.addSegment(seg, true);
+      p1 = p2;
+      p2 = region[i];
+      const f = this.geo.compareVec2(p1, p2);
+      if (f === 0) {
+        // points are equal, so we have a zero-length segment
+        continue; // skip it
       }
+      this.addSegment(
+        new SegmentBoolLine(
+          new SegmentLine(f < 0 ? p1 : p2, f < 0 ? p2 : p1, this.geo),
+          null,
+          this.log,
+        ),
+        true,
+      );
     }
   }
 
-  compareStatus(ev1: Event, ev2: Event): number {
-    const a1 = ev1.seg.start;
-    const a2 = ev1.seg.end;
-    const b1 = ev2.seg.start;
-    const b2 = ev2.seg.end;
-
-    if (this.geo.pointsCollinear(a1, b1, b2)) {
-      if (this.geo.pointsCollinear(a2, b1, b2)) {
-        return 1;
-      }
-      return this.geo.pointAboveOrOnLine(a2, b1, b2) ? 1 : -1;
-    }
-    return this.geo.pointAboveOrOnLine(a1, b1, b2) ? 1 : -1;
-  }
-
-  statusFindSurrounding(ev: Event) {
-    return this.status.findTransition(ev, (here: Event) => {
-      if (here === ev) {
+  compareSegments(seg1: Segment, seg2: Segment): number {
+    // TODO:
+    //  This is where some of the curve instability comes from... we need to reliably sort
+    //  segments, but this is surprisingly hard when it comes to curves.
+    //
+    //  The easy case is something like:
+    //
+    //             C   A - - - D
+    //               \
+    //                 \
+    //                   B
+    //  A is clearly above line C-B, which is easily calculated... however, once curves are
+    //  introduced, it's not so obvious without using some heuristic which will fail at times.
+    //
+    let A = seg1.start();
+    let B = seg2.start2();
+    const C = seg2.start();
+    if (seg2.pointOn(A)) {
+      // A intersects seg2 somehow (possibly sharing a start point, or maybe just splitting it)
+      //
+      //   AC - - - - D
+      //      \
+      //        \
+      //          B
+      //
+      // so grab seg1's second point (D) instead
+      A = seg1.start2();
+      if (
+        seg1 instanceof SegmentLine &&
+        seg2 instanceof SegmentLine &&
+        seg2.pointOn(A)
+      ) {
+        // oh... D is on the line too... so these are the same
         return 0;
       }
-      return -this.compareStatus(ev, here);
+      if (seg2 instanceof SegmentCurve) {
+        if (
+          this.geo.snap0(A[0] - C[0]) === 0 &&
+          this.geo.snap0(B[0] - C[0]) === 0
+        ) {
+          // seg2 is a curve, but the tangent line (C-B) at the start point is vertical, and
+          // collinear with A... so... just sort based on the Y values I guess?
+          return Math.sign(C[1] - A[1]);
+        }
+      }
+    } else {
+      if (seg2 instanceof SegmentCurve) {
+        // find seg2's position at A[0] and see if it's above or below A[1]
+        const y = seg2.mapXtoY(A[0]);
+        if (y !== false) {
+          return Math.sign(y - A[1]);
+        }
+      }
+      if (seg1 instanceof SegmentCurve) {
+        // unfortunately, in order to sort against curved segments, we need to check the
+        // intersection point... this means a lot more intersection tests, but I'm not sure how else
+        // to sort correctly
+        const i = segmentsIntersect(seg1, seg2, true);
+        if (i && i.kind === "tValuePairs") {
+          // find the intersection point on seg1
+          for (const pair of i.tValuePairs) {
+            const t = this.geo.snap01(pair[0]);
+            if (t > 0 && t < 1) {
+              B = seg1.point(t);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // fallthrough to this calculation which determines if A is on one side or another of C-B
+    const [Ax, Ay] = A;
+    const [Bx, By] = B;
+    const [Cx, Cy] = C;
+    return Math.sign((Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax));
+  }
+
+  statusFindSurrounding(ev: EventBool) {
+    return this.status.findTransition(ev, (here: EventBool) => {
+      if (ev === here) {
+        return 0;
+      }
+      const c = this.compareSegments(ev.seg.data, here.seg.data);
+      return c === 0 ? -1 : c;
     });
   }
 
-  checkIntersection(ev1: Event, ev2: Event): Event | null {
+  checkIntersection(ev1: EventBool, ev2: EventBool): EventBool | null {
     // returns the segment equal to ev1, or null if nothing equal
     const seg1 = ev1.seg;
     const seg2 = ev2.seg;
-    const a1 = seg1.start;
-    const a2 = seg1.end;
-    const b1 = seg2.start;
-    const b2 = seg2.end;
 
     this.log?.checkIntersection(seg1, seg2);
 
-    const i = this.geo.linesIntersect(a1, a2, b1, b2);
+    const i = segmentsIntersect(seg1.data, seg2.data, false);
 
     if (i === null) {
+      // no intersections
+      return null;
+    } else if (i.kind === "tRangePairs") {
       // segments are parallel or coincident
+      const {
+        tStart: [tA1, tB1],
+        tEnd: [tA2, tB2],
+      } = i;
 
-      // if points aren't collinear, then the segments are parallel, so no
-      // intersections
-      if (!this.geo.pointsCollinear(a1, a2, b1)) {
-        return null;
-      }
-      // otherwise, segments are on top of each other somehow (aka coincident)
-
-      if (this.geo.pointsSame(a1, b2) || this.geo.pointsSame(a2, b1)) {
+      if (
+        (tA1 === 1 && tA2 === 1 && tB1 === 0 && tB2 === 0) ||
+        (tA1 === 0 && tA2 === 0 && tB1 === 1 && tB2 === 1)
+      ) {
         return null; // segments touch at endpoints... no intersection
       }
 
-      const a1_equ_b1 = this.geo.pointsSame(a1, b1);
-      const a2_equ_b2 = this.geo.pointsSame(a2, b2);
-
-      if (a1_equ_b1 && a2_equ_b2) {
+      if (tA1 === 0 && tA2 === 1 && tB1 === 0 && tB2 === 1) {
         return ev2; // segments are exactly equal
       }
 
-      const a1_between = !a1_equ_b1 && this.geo.pointBetween(a1, b1, b2);
-      const a2_between = !a2_equ_b2 && this.geo.pointBetween(a2, b1, b2);
+      const a1 = seg1.data.start();
+      const a2 = seg1.data.end();
+      const b2 = seg2.data.end();
 
-      if (a1_equ_b1) {
-        if (a2_between) {
+      if (tA1 === 0 && tB1 === 0) {
+        if (tA2 === 1) {
           //  (a1)---(a2)
           //  (b1)----------(b2)
-          this.divideEvent(ev2, a2);
+          this.divideEvent(ev2, tB2, a2);
         } else {
           //  (a1)----------(a2)
           //  (b1)---(b2)
-          this.divideEvent(ev1, b2);
+          this.divideEvent(ev1, tA2, b2);
         }
         return ev2;
-      } else if (a1_between) {
-        if (!a2_equ_b2) {
+      } else if (tB1 > 0 && tB1 < 1) {
+        if (tA2 === 1 && tB2 === 1) {
+          //         (a1)---(a2)
+          //  (b1)----------(b2)
+          this.divideEvent(ev2, tB1, a1);
+        } else {
           // make a2 equal to b2
-          if (a2_between) {
+          if (tA2 === 1) {
             //         (a1)---(a2)
             //  (b1)-----------------(b2)
-            this.divideEvent(ev2, a2);
+            this.divideEvent(ev2, tB2, a2);
           } else {
             //         (a1)----------(a2)
             //  (b1)----------(b2)
-            this.divideEvent(ev1, b2);
+            this.divideEvent(ev1, tA2, b2);
           }
+          //         (a1)---(a2)
+          //  (b1)----------(b2)
+          this.divideEvent(ev2, tB1, a1);
         }
-
-        //         (a1)---(a2)
-        //  (b1)----------(b2)
-        this.divideEvent(ev2, a1);
       }
-    } else {
-      // otherwise, lines intersect at i.p, which may or may not be between the
-      // endpoints
+      return null;
+    } else if (i.kind === "tValuePairs") {
+      if (i.tValuePairs.length <= 0) {
+        return null;
+      }
+      // process a single intersection
+
+      // skip intersections where endpoints meet
+      let minPair = i.tValuePairs[0];
+      for (
+        let j = 1;
+        j < i.tValuePairs.length &&
+        ((minPair[0] === 0 && minPair[1] === 0) ||
+          (minPair[0] === 0 && minPair[1] === 1) ||
+          (minPair[0] === 1 && minPair[1] === 0) ||
+          (minPair[0] === 1 && minPair[1] === 1));
+        j++
+      ) {
+        minPair = i.tValuePairs[j];
+      }
+      const [tA, tB] = minPair;
+
+      // even though *in theory* seg1.data.point(tA) === seg2.data.point(tB), that isn't exactly
+      // correct in practice because intersections aren't exact... so we need to calculate a single
+      // intersection point that everyone can share
+      const p =
+        tB === 0
+          ? seg2.data.start()
+          : tB === 1
+            ? seg2.data.end()
+            : tA === 0
+              ? seg1.data.start()
+              : tA === 1
+                ? seg1.data.end()
+                : seg1.data.point(tA);
 
       // is A divided between its endpoints? (exclusive)
-      if (i.alongA === AlongIntersection.BetweenStartAndEnd) {
-        if (i.alongB === AlongIntersection.EqualStart) {
-          this.divideEvent(ev1, b1);
-        } else if (i.alongB === AlongIntersection.BetweenStartAndEnd) {
-          this.divideEvent(ev1, i.p);
-        } else if (i.alongB === AlongIntersection.EqualEnd) {
-          this.divideEvent(ev1, b2);
-        }
+      if (tA > 0 && tA < 1) {
+        this.divideEvent(ev1, tA, p);
       }
-
       // is B divided between its endpoints? (exclusive)
-      if (i.alongB === AlongIntersection.BetweenStartAndEnd) {
-        if (i.alongA === AlongIntersection.EqualStart) {
-          this.divideEvent(ev2, a1);
-        } else if (i.alongA === AlongIntersection.BetweenStartAndEnd) {
-          this.divideEvent(ev2, i.p);
-        } else if (i.alongA === AlongIntersection.EqualEnd) {
-          this.divideEvent(ev2, a2);
-        }
+      if (tB > 0 && tB < 1) {
+        this.divideEvent(ev2, tB, p);
       }
+      return null;
     }
-    return null;
+    throw new Error("PolyBool: Unknown intersection type");
   }
 
-  calculate(primaryPolyInverted: boolean, secondaryPolyInverted: boolean) {
-    const segments: Segment[] = [];
+  calculate() {
+    const segments: SegmentBool[] = [];
     while (!this.events.isEmpty()) {
       const ev = this.events.getHead();
 
@@ -384,9 +603,8 @@ export class Intersecter {
 
           // next, calculate whether we are filled below us
           if (!below) {
-            // if nothing is below us...
-            // we are filled below us if the polygon is inverted
-            ev.seg.myFill.below = primaryPolyInverted;
+            // if nothing is below us, then we're not filled
+            ev.seg.myFill.below = false;
           } else {
             // otherwise, we know the answer -- it's the same if whatever is
             // below us is filled above it
@@ -396,11 +614,9 @@ export class Intersecter {
           // since now we know if we're filled below us, we can calculate
           // whether we're filled above us by applying toggle to whatever is
           // below us
-          if (toggle) {
-            ev.seg.myFill.above = !ev.seg.myFill.below;
-          } else {
-            ev.seg.myFill.above = ev.seg.myFill.below;
-          }
+          ev.seg.myFill.above = toggle
+            ? !ev.seg.myFill.below
+            : ev.seg.myFill.below;
         } else {
           // now we fill in any missing transition information, since we are
           // all-knowing at this point
@@ -410,15 +626,16 @@ export class Intersecter {
             // we're inside the other polygon
             let inside: boolean | null;
             if (!below) {
-              // if nothing is below us, then we're inside if the other polygon
-              // is inverted
-              inside = ev.primary ? secondaryPolyInverted : primaryPolyInverted;
+              // if nothing is below us, then we're not filled
+              inside = false;
             } else {
               // otherwise, something is below us
               // so copy the below segment's other polygon's above
               if (ev.primary === below.primary) {
                 if (below.seg.otherFill === null) {
-                  throw new Error("otherFill is null");
+                  throw new Error(
+                    "PolyBool: Unexpected state of otherFill (null)",
+                  );
                 }
                 inside = below.seg.otherFill.above;
               } else {
@@ -471,7 +688,7 @@ export class Intersecter {
           // make sure `seg.myFill` actually points to the primary polygon
           // though
           if (!ev.seg.otherFill) {
-            throw new Error("otherFill is null");
+            throw new Error("PolyBool: Unexpected state of otherFill (null)");
           }
           const s = ev.seg.myFill;
           ev.seg.myFill = ev.seg.otherFill;

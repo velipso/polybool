@@ -40,6 +40,15 @@ var wscale = 2;
 var cnvWidth, cnvHeight;
 var hover = false;
 var mode = 'Intersect';
+const segmentBezier = false; // how many segments? ex: 8
+
+const dummyReceiver = {
+  beginPath: () => {},
+  moveTo: () => {},
+  lineTo: () => {},
+  bezierCurveTo: () => {},
+  closePath: () => {}
+};
 
 var polyCases = [{
   name: 'Assorted Polygons',
@@ -57,19 +66,112 @@ var polyCases = [{
     inverted: false
   }
 }, {
+  name: 'Curved Shapes 1',
+  shape1: [
+    [ [450,150],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curved Shapes 2',
+  shape1: [
+    [ [410,160],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curved Shapes 3',
+  shape1: [
+    [ [450,100],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curved Shapes 4',
+  shape1: [
+    [ [340,150],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curved Shapes 5',
+  shape1: [
+    [ [460,70],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curved Shapes 6',
+  shape1: [
+    [ [450,80],[200,150,200,60,450,10] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  // this one fails due to numerical instability... it will detect an intersection between line
+  // and curve at an endpoint, but see it as 0.999999 instead of 1, which causes an event to be
+  // divided, and a zero-length segment
+  name: 'Curved Shapes 7 (FAIL)',
+  shape1: [
+    [ [450,120],[200,150,200,60,450,60] ]
+  ],
+  shape2: [
+    [ [500,150],[380,150,380,60,500,60] ]
+  ]
+}, {
+  name: 'Curve + Line 1',
+  shape1: [
+    [ [600,60],[600,150],[560,190],[560,110],[500,180],[260,90] ]
+  ],
+  shape2: [
+    [ [400,50],[400,150,200,200,200,50] ]
+  ],
+}, {
+  name: 'Curve + Line 2',
+  shape1: [
+    [ [600,60],[600,150],[560,190],[560,110],[500,180],[360,110] ]
+  ],
+  shape2: [
+    [ [400,50],[400,150,200,200,200,50] ]
+  ],
+}, {
+  name: 'Curve + Line 3',
+  shape1: [
+    [ [600,60],[600,150],[560,190],[560,110],[500,180],[270,130] ]
+  ],
+  shape2: [
+    [ [400,50],[400,150,200,200,200,50] ]
+  ],
+}, {
+  name: 'Curve + Line 4',
+  shape1: [
+    [ [600,60],[600,150],[560,190],[560,110],[500,180],[240,160] ]
+  ],
+  shape2: [
+    [ [400,50],[400,150,200,200,200,50] ]
+  ],
+}, {
+  name: 'Curve + Line 5',
+  shape1: [
+    [ [600,60],[600,150],[560,190],[560,110],[500,180],[380,120] ]
+  ],
+  shape2: [
+    [ [400,50],[400,150,200,200,200,50] ]
+  ],
+}, {
   name: 'Simple Rectangles',
-  poly1: {
-    regions: [
-      [ [200, 50], [600, 50], [600, 150], [200, 150] ]
-    ],
-    inverted: false
-  },
-  poly2: {
-    regions: [
-      [ [300, 150], [500, 150], [500, 200], [300, 200] ]
-    ],
-    inverted: false
-  }
+  shape1: [
+    [ [200,50],[600,50],[600,150],[200,150] ]
+  ],
+  shape2: [
+    [ [300,150],[500,150],[500,200],[300,200] ]
+  ],
 }, {
   name: 'Shared Right Edge',
   poly1: {
@@ -250,35 +352,40 @@ var polyCases = [{
 }];
 
 var nextDemoIndex = -1;
-var caseName, poly1, poly2, polyBox;
+var caseName, demo, polyBox;
 var scaleToFit = false;
 function nextDemo(d){
-  nextDemoIndex = (nextDemoIndex + d) % polyCases.length;
-  if (nextDemoIndex < 0)
-    nextDemoIndex += polyCases.length;
-  var demo = polyCases[nextDemoIndex];
+  nextDemoIndex = (((nextDemoIndex + d) % polyCases.length) + polyCases.length) % polyCases.length;
+  demo = polyCases[nextDemoIndex];
   caseName = (nextDemoIndex + 1) + '. ' + demo.name;
-  window.poly1 = poly1 = demo.poly1;
-  window.poly2 = poly2 = demo.poly2;
+  window.demo = demo;
   polyBox = { min: [false, false], max: [false, false] };
-  function calcBox(regions){
-    for (var r = 0; r < regions.length; r++){
-      var region = regions[r];
-      for (var p = 0; p < region.length; p++){
-        var pt = region[p];
-        if (polyBox.min[0] === false || pt[0] < polyBox.min[0])
-          polyBox.min[0] = pt[0];
-        if (polyBox.min[1] === false || pt[1] < polyBox.min[1])
-          polyBox.min[1] = pt[1];
-        if (polyBox.max[0] === false || pt[0] > polyBox.max[0])
-          polyBox.max[0] = pt[0];
-        if (polyBox.max[1] === false || pt[1] > polyBox.max[1])
-          polyBox.max[1] = pt[1];
+  const polyBoxPoint = (x, y) => {
+    if (polyBox.min[0] === false || x < polyBox.min[0])
+      polyBox.min[0] = x;
+    if (polyBox.min[1] === false || y < polyBox.min[1])
+      polyBox.min[1] = y;
+    if (polyBox.max[0] === false || x > polyBox.max[0])
+      polyBox.max[0] = x;
+    if (polyBox.max[1] === false || y > polyBox.max[1])
+      polyBox.max[1] = y;
+  };
+  const calcBox = (regions) => {
+    for (const region of regions) {
+      for (const pt of region) {
+        for (let i = 0; i < pt.length; i += 2) {
+          polyBoxPoint(pt[i], pt[i + 1]);
+        }
       }
     }
+  };
+  if ('poly1' in demo) {
+    calcBox(demo.poly1.regions);
+    calcBox(demo.poly2.regions);
+  } else {
+    calcBox(demo.shape1);
+    calcBox(demo.shape2);
   }
-  calcBox(poly1.regions);
-  calcBox(poly2.regions);
   recalc();
 }
 
@@ -313,11 +420,16 @@ function vertRadius(region, vert){
 }
 
 function drawVerts(poly, offset){
-  poly.regions.forEach(function(region, region_i){
+  poly.regions.forEach(function(region){
     for (var i = 0; i < region.length; i++){
+      const p = region[i];
       ctx.beginPath();
-      ctx.arc(scaleX(region[i][0]), scaleY(region[i][1]) + offset, vertRadius(region, i),
-        0, Math.PI * 2);
+      ctx.arc(
+        scaleX(p[p.length - 2]),
+        scaleY(p[p.length - 1]) + offset,
+        vertRadius(region, i),
+        0, Math.PI * 2
+      );
       ctx.fill();
     }
   });
@@ -378,23 +490,107 @@ function buildLogPlay(){
   document.getElementById('bl_play').innerHTML = buildLogTimer === false ? 'Play' : 'Stop';
 }
 
+class Receiver {
+  regions = [];
+
+  beginPath() {
+    this.regions.push([]);
+  }
+
+  moveTo(x, y) {
+    this.regions[this.regions.length - 1].push([x, y]);
+  }
+
+  lineTo(x, y) {
+    this.regions[this.regions.length - 1].push([x, y]);
+  }
+
+  bezierCurveTo(a, b, c, d, x, y) {
+    this.regions[this.regions.length - 1].push([a, b, c, d, x, y]);
+  }
+
+  closePath() {
+  }
+
+  done() {
+    return {
+      regions: this.regions,
+      inverted: false
+    };
+  }
+}
+
+function makeShape(regions) {
+  const shape = polybool.shape();
+  for (const region of regions) {
+    shape.beginPath();
+    let here = [0, 0];
+    for (let i = 0; i < region.length; i++) {
+      const pt = region[i];
+      if (pt.length === 2) {
+        if (i === 0) {
+          shape.moveTo(pt[0], pt[1]);
+        } else {
+          shape.lineTo(pt[0], pt[1]);
+        }
+        here = pt;
+      } else {
+        if (segmentBezier === false) {
+          // bezier
+          shape.bezierCurveTo(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5]);
+        } else {
+          // segmented bezier
+          const seg = {
+            p0: here,
+            p1: [pt[0], pt[1]],
+            p2: [pt[2], pt[3]],
+            p3: [pt[4], pt[5]]
+          };
+          for (let j = 1; j <= segmentBezier; j++) {
+            const s = segPoint(seg, j / segmentBezier);
+            shape.lineTo(s[0], s[1]);
+          }
+        }
+        here = [pt[4], pt[5]];
+      }
+    }
+    shape.closePath();
+  }
+  return shape;
+}
+
 var clipResult;
 function recalc(){
   buildLogStop();
   buildLogMax = 0;
 
-  var func = ({
-    'Intersect' : (a, b) => polybool.intersect(a, b),
-    'Union'     : (a, b) => polybool.union(a, b),
-    'Red - Blue': (a, b) => polybool.difference(a, b),
-    'Blue - Red': (a, b) => polybool.differenceRev(a, b),
-    'Xor'       : (a, b) => polybool.xor(a, b)
-  })[mode];
-  var BL = polybool.buildLog(true);
-  window.clipResult = clipResult = {
-    result: func(poly1, poly2),
-    build_log: BL
-  };
+  if ('poly1' in demo) {
+    var func = ({
+      'Intersect' : (a, b) => polybool.intersect(a, b),
+      'Union'     : (a, b) => polybool.union(a, b),
+      'Red - Blue': (a, b) => polybool.difference(a, b),
+      'Blue - Red': (a, b) => polybool.differenceRev(a, b),
+      'Xor'       : (a, b) => polybool.xor(a, b)
+    })[mode];
+    var BL = polybool.buildLog(true);
+    window.clipResult = clipResult = {
+      result: func(demo.poly1, demo.poly2),
+      build_log: BL
+    };
+  } else {
+    var func = ({
+      'Intersect' : (a, b) => a.combine(b).intersect().output(new Receiver()).done(),
+      'Union'     : (a, b) => a.combine(b).union().output(new Receiver()).done(),
+      'Red - Blue': (a, b) => a.combine(b).difference().output(new Receiver()).done(),
+      'Blue - Red': (a, b) => a.combine(b).differenceRev().output(new Receiver()).done(),
+      'Xor'       : (a, b) => a.combine(b).xor().output(new Receiver()).done(),
+    })[mode];
+    var BL = polybool.buildLog(true);
+    window.clipResult = clipResult = {
+      result: func(makeShape(demo.shape1), makeShape(demo.shape2)),
+      build_log: BL
+    };
+  }
   redraw();
 }
 
@@ -423,14 +619,21 @@ function unscaleY(y){
 }
 
 function drawRegions(regions, offset){
-  regions.forEach(function(region, i){
-    if (region.length <= 0)
-      return;
-    ctx.moveTo(scaleX(region[0][0]), scaleY(region[0][1]) + offset);
-    for (var i = 1; i < region.length; i++)
-      ctx.lineTo(scaleX(region[i][0]), scaleY(region[i][1]) + offset);
+  for (const region of regions) {
+    for (let i = 0; i < region.length; i++) {
+      const pt = region[i].map((p, j) => (j % 2) ? scaleY(p) + offset : scaleX(p));
+      if (pt.length === 2) {
+        if (i === 0) {
+          ctx.moveTo(pt[0], pt[1]);
+        } else {
+          ctx.lineTo(pt[0], pt[1]);
+        }
+      } else {
+        ctx.bezierCurveTo(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5]);
+      }
+    }
     ctx.closePath();
-  });
+  }
 }
 
 function polyStroke(result, offset){
@@ -450,6 +653,82 @@ function polyFill(result, rect1, rect2, offset){
   }
   drawRegions(result.regions, offset);
   ctx.fill('evenodd');
+}
+
+function segStart(seg) {
+  return 'data' in seg ? seg.data.p0 : seg.p0;
+}
+
+function segEnd(seg) {
+  if ('data' in seg) {
+    if ('p3' in seg.data) {
+      return seg.data.p3;
+    }
+    return seg.data.p1;
+  }
+  if ('p3' in seg) {
+    return seg.p3;
+  }
+  return seg.p1;
+}
+
+function segPoint(seg, t) {
+  if ('data' in seg) {
+    return segPoint(seg.data, t);
+  }
+  if ('p3' in seg) {
+    const p0 = seg.p0;
+    const p1 = seg.p1;
+    const p2 = seg.p2;
+    const p3 = seg.p3;
+
+    if (t === 0) {
+      return p0;
+    } else if (t === 1) {
+      return p3;
+    }
+
+    const t1t = (1 - t) * (1 - t);
+    const tt = t * t;
+    const t0 = t1t * (1 - t);
+    const t1 = 3 * t1t * t;
+    const t2 = 3 * tt * (1 - t);
+    const t3 = tt * t;
+
+    return [
+      p0[0] * t0 + p1[0] * t1 + p2[0] * t2 + p3[0] * t3,
+      p0[1] * t0 + p1[1] * t1 + p2[1] * t2 + p3[1] * t3,
+    ];
+  } else {
+    const p0 = seg.p0;
+    const p1 = seg.p1;
+
+    if (t === 0) {
+      return p0;
+    } else if (t === 1) {
+      return p1;
+    }
+
+    return [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
+  }
+}
+
+function segPath(seg, ctx, skipMoveTo) {
+  if ('data' in seg) {
+    return segPath(seg.data, ctx);
+  }
+  if (!skipMoveTo) {
+    ctx.moveTo(seg.p0[0], seg.p0[1]);
+  }
+  if ('p3' in seg) {
+    ctx.bezierCurveTo(
+      seg.p1[0], seg.p1[1],
+      seg.p2[0], seg.p2[1],
+      seg.p3[0], seg.p3[1]
+    );
+  } else {
+    ctx.lineTo(seg.p1[0], seg.p1[1]);
+  }
 }
 
 function redraw(){
@@ -486,17 +765,27 @@ function redraw(){
   var bl_oldchainids = [];
   var bl_phase = 0;
   var bl_selected = false;
+  var bl_info = [];
+  window.buildLogMax = buildLogMax;
   clipResult.build_log.forEach(function(blw, i){
-    if (i >= buildLogMax)
+    if (i >= buildLogMax) {
+      if (i === buildLogMax) console.log(clipResult.build_log[i - 1]);
       return;
+    }
     var bl = blw.data;
     bl_last_check = false;
     bl_last_div_seg = false;
     bl_last_pop_seg = false;
     bl_last_status = false;
     bl_last_chop = false;
+    if (bl_last_done) {
+      bl_oldsegs = [];
+    }
     bl_last_done = false;
     switch (blw.type){
+      case 'info':
+        bl_info.unshift(blw.data);
+        break;
       case 'vert':
         bl_vert = bl.x;
         break;
@@ -594,24 +883,19 @@ function redraw(){
         break;
       case 'chop':
         bl_last_chop = bl;
-        for (var i = 0; i < bl_segs.length; i++){
-          if (bl_segs[i].id === bl.seg.id){
-            bl_segs[i] = JSON.parse(JSON.stringify(bl_segs[i]));
-            bl_segs[i].end = bl.p;
-          }
-        }
-        break;
-      case 'seg_update':
-        function chk_seg(seg){
+        // fallthrough
+      case 'seg_update': {
+        const chk_seg = (seg) => {
           if (seg.id !== bl.seg.id)
             return seg;
           return bl.seg;
-        }
+        };
         for (var i = 0; i < bl_segs.length; i++)
           bl_segs[i] = chk_seg(bl_segs[i]);
         for (var i = 0; i < bl_oldsegs.length; i++)
           bl_oldsegs[i] = chk_seg(bl_oldsegs[i]);
         break;
+      }
       case 'selected':
         bl_selected = bl.segs;
         bl_phase++;
@@ -621,26 +905,49 @@ function redraw(){
         bl_last_seg_keep_match = false;
         break;
       case 'chain_new':
-        bl_chains.push([ bl.p1, bl.p2 ]);
+        bl_chains.push([bl.seg]);
         bl_chainids.push(bl_nextchainid++);
         bl_last_seg_keep = false;
         break;
-      case 'chain_rev':
-        bl_chains[bl.index].reverse();
+      case 'chain_rev': {
+        const newChain = [];
+        for (let i = 0; i < bl_chains[bl.index].length; i++) {
+          let seg = bl_chains[bl.index][i];
+          if ('p3' in seg) {
+            seg = { p0: seg.p3, p1: seg.p2, p2: seg.p1, p3: seg.p0 };
+          } else {
+            seg = { p0: seg.p1, p1: seg.p0 };
+          }
+          newChain.unshift(seg);
+        }
+        bl_chains[bl.index] = newChain;
         break;
+      }
       case 'chain_add_head':
-        bl_chains[bl.index].unshift(bl.p);
+        bl_chains[bl.index].unshift(bl.seg);
         bl_last_seg_keep = false;
         break;
       case 'chain_add_tail':
-        bl_chains[bl.index].push(bl.p);
+        bl_chains[bl.index].push(bl.seg);
         bl_last_seg_keep = false;
         break;
-      case 'chain_rem_head':
+      case 'chain_simp_head':
         bl_chains[bl.index].shift();
+        bl_chains[bl.index][0] = bl.seg;
         break;
-      case 'chain_rem_tail':
+      case 'chain_simp_tail':
+        bl_chains[bl.index][bl_chains[bl.index].length - 1].pop();
+        bl_chains[bl.index][bl_chains[bl.index].length - 1] = bl.seg;
+        break;
+      case 'chain_simp_close':
         bl_chains[bl.index].pop();
+        bl_chains[bl.index].shift();
+        bl_chains[bl.index].push(bl.seg);
+        break;
+      case 'chain_simp_join':
+        bl_chains[bl.index1].pop();
+        bl_chains[bl.index2].shift();
+        bl_chains[bl.index1].push(bl.seg);
         break;
       case 'chain_match':
         bl_last_seg_keep_match = bl.index;
@@ -679,16 +986,11 @@ function redraw(){
       return;
     if (bl_phase === 2 && bl_last_done && poly1)
       return;
-    var ang = Math.atan2(seg.end[1] - seg.start[1], seg.end[0] - seg.start[0]);
+    const m1 = segPoint(seg, 0.49);
+    const m2 = segPoint(seg, 0.51);
+    var ang = Math.atan2(m2[1] - m1[1], m2[0] - m1[0]);
     ctx.beginPath();
-    ctx.moveTo(
-      seg.start[0],
-      seg.start[1]
-    );
-    ctx.lineTo(
-      seg.end[0],
-      seg.end[1]
-    );
+    segPath(seg, ctx);
     ctx.strokeStyle = poly1 ? (fade ? '#faa' : '#f00') : (fade ? '#aaf' : '#00f');
     ctx.lineWidth = size;
     ctx.stroke();
@@ -700,8 +1002,8 @@ function redraw(){
       var dist = 6;
       ctx.beginPath();
       ctx.arc(
-        dist * Math.cos(ang) + (seg.start[0] + seg.end[0]) / 2,
-        dist * Math.sin(ang) + (seg.start[1] + seg.end[1]) / 2,
+        dist * Math.cos(ang) + (m1[0] + m2[0]) / 2,
+        dist * Math.sin(ang) + (m1[1] + m2[1]) / 2,
         fill === null ? 1 : 3,
         0, Math.PI * 2
       );
@@ -727,8 +1029,8 @@ function redraw(){
       drawseg(seg, false, 2);
       labels.push({
         txt: seg.id,
-        x: (seg.start[0] + seg.end[0]) / 2,
-        y: (seg.start[1] + seg.end[1]) / 2
+        x: (segStart(seg)[0] + segEnd(seg)[0]) / 2,
+        y: (segStart(seg)[1] + segEnd(seg)[1]) / 2
       });
     });
   }
@@ -739,14 +1041,12 @@ function redraw(){
   }
   if (bl_phase < 4 && bl_last_check){
     ctx.beginPath();
-    ctx.moveTo(bl_last_check.seg1.start[0], bl_last_check.seg1.start[1]);
-    ctx.lineTo(bl_last_check.seg1.end[0], bl_last_check.seg1.end[1]);
+    segPath(bl_last_check.seg1, ctx);
     ctx.strokeStyle = '#0f0';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(bl_last_check.seg2.start[0], bl_last_check.seg2.start[1]);
-    ctx.lineTo(bl_last_check.seg2.end[0], bl_last_check.seg2.end[1]);
+    segPath(bl_last_check.seg2, ctx);
     ctx.strokeStyle = '#0f0';
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -832,16 +1132,9 @@ function redraw(){
   }
   if (bl_phase < 4 && bl_last_chop){
     ctx.beginPath();
-    ctx.moveTo(bl_last_chop.seg.start[0], bl_last_chop.seg.start[1]);
-    ctx.lineTo(bl_last_chop.p[0], bl_last_chop.p[1]);
+    segPath(bl_last_chop.seg, ctx);
     ctx.lineWidth = 3;
     ctx.strokeStyle = '#f00';
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(bl_last_chop.p[0], bl_last_chop.p[1]);
-    ctx.lineTo(bl_last_chop.seg.end[0], bl_last_chop.seg.end[1]);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#ddd';
     ctx.stroke();
   }
   if (bl_phase < 4 && bl_vert !== false){
@@ -855,32 +1148,26 @@ function redraw(){
   if (bl_phase === 4){
     bl_selected.forEach(function(seg){
       ctx.beginPath();
-      ctx.moveTo(seg.start[0], seg.start[1]);
-      ctx.lineTo(seg.end[0], seg.end[1]);
+      segPath(seg, ctx);
       ctx.strokeStyle = bl_last_done ? '#070' : '#e2e2e2';
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.beginPath();
-      ctx.arc(seg.start[0], seg.start[1], 3, 0, Math.PI * 2);
+      ctx.arc(segStart(seg)[0], segStart(seg)[1], 3, 0, Math.PI * 2);
       ctx.fillStyle = bl_last_done ? '#070' : '#e2e2e2';
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(seg.end[0], seg.end[1], 3, 0, Math.PI * 2);
+      ctx.arc(segEnd(seg)[0], segEnd(seg)[1], 3, 0, Math.PI * 2);
       ctx.fillStyle = bl_last_done ? '#070' : '#e2e2e2';
       ctx.fill();
     });
   }
   if (bl_phase === 4 || (bl_phase === 5 && bl_last_done)){
     ctx.beginPath();
-    bl_oldchains.forEach(function(ch){
-      for (var i = 0; i < ch.length; i++){
-        var pt = ch[i];
-        if (i === 0)
-          ctx.moveTo(pt[0], pt[1]);
-        else
-          ctx.lineTo(pt[0], pt[1]);
+    bl_oldchains.forEach(function(segs){
+      for (let i = 0; i < segs.length; i++) {
+        segPath(segs[i], ctx, i !== 0);
       }
-      ctx.lineTo(ch[0][0], ch[0][1]);
     });
     ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
     ctx.fill('evenodd');
@@ -891,7 +1178,7 @@ function redraw(){
       var totx = 0;
       var toty = 0;
       for (var i = 0; i < ch.length; i++){
-        var pt = ch[i];
+        var pt = segStart(ch[i]);
         totx += pt[0];
         toty += pt[1];
         ctx.beginPath();
@@ -906,14 +1193,17 @@ function redraw(){
       });
     });
 
-    function drawarrow(pt1, pt2, rad){
+    function drawarrow(seg, rad){
+      var pt1 = segStart(seg);
+      var pt2 = segEnd(seg);
       var arrowLen = 8;
       var arrowAng = Math.PI - 0.45;
       ctx.beginPath();
-      ctx.moveTo(pt1[0], pt1[1]);
-      ctx.lineTo(pt2[0], pt2[1]);
+      segPath(seg, ctx);
 
-      var ang = Math.atan2(pt2[1] - pt1[1], pt2[0] - pt1[0]);
+      const m1 = segPoint(seg, 0.9);
+      const m2 = segPoint(seg, 1);
+      var ang = Math.atan2(m2[1] - m1[1], m2[0] - m1[0]);
       var ax = pt2[0] - Math.cos(ang) * rad;
       var ay = pt2[1] - Math.sin(ang) * rad;
       ctx.moveTo(ax, ay);
@@ -930,10 +1220,11 @@ function redraw(){
 
     bl_chains.forEach(function(ch, chi){
       var rad = 3;
-      for (var i = 0; i < ch.length - 1; i++){
-        var pt1 = ch[i];
-        var pt2 = ch[i + 1];
-        drawarrow(pt1, pt2, rad);
+      for (var i = 0; i < ch.length; i++){
+        const seg = ch[i];
+        var pt1 = segStart(seg);
+        var pt2 = segEnd(seg);
+        drawarrow(seg, rad);
         ctx.lineWidth = 1;
         ctx.strokeStyle = '#070';
         ctx.stroke();
@@ -956,10 +1247,10 @@ function redraw(){
     });
 
     if (bl_last_seg_keep){
-      var pt1 = bl_last_seg_keep.seg.start;
-      var pt2 = bl_last_seg_keep.seg.end;
+      var pt1 = segStart(bl_last_seg_keep.seg);
+      var pt2 = segEnd(bl_last_seg_keep.seg);
       ctx.beginPath();
-      drawarrow(pt1, pt2, 3.5);
+      drawarrow(bl_last_seg_keep.seg, 3.5);
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#0f0';
       ctx.stroke();
@@ -1004,6 +1295,14 @@ function redraw(){
     }
   }
 
+  let poly1, poly2;
+  if ('poly1' in demo) {
+    poly1 = demo.poly1;
+    poly2 = demo.poly2;
+  } else {
+    poly1 = { regions: demo.shape1, inverted: false };
+    poly2 = { regions: demo.shape2, inverted: false };
+  }
   ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
   polyFill(poly1, [0, 0], [cnvWidth, cnvHeight / 2], cnvHeight / 2);
   ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
@@ -1087,6 +1386,22 @@ function redraw(){
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.lineWidth = 1;
   ctx.stroke();
+
+  // draw info log
+  ctx.save();
+  ctx.setTransform(rscale, 0, 0, rscale, 0, 0);
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#000';
+  for (let y = 210, i = 0; y >= 0 && i < bl_info.length; y -= 20, i++) {
+    const { msg, data } = bl_info[i];
+    ctx.fillText(msg + (
+      typeof data === 'undefined'
+      ? ''
+      : ' ' + JSON.stringify(data)
+    ), 10, y);
+  }
+  ctx.restore();
 }
 
 function init(){
@@ -1109,16 +1424,17 @@ function init(){
     ];
   }
 
-  function closestPoint(poly, x, y){
+  function closestPoint(regions, x, y){
     x = unscaleX(x);
     y = unscaleY(y);
     var reg = false;
     var vert = false;
     var len2 = false;
-    poly.regions.forEach(function(region){
+    regions.forEach(function(region){
       for (var i = 0; i < region.length; i++){
-        var dx = scaleX(region[i][0] - x);
-        var dy = scaleY(region[i][1] - y);
+        const pt = region[i];
+        var dx = scaleX(pt[pt.length - 2] - x);
+        var dy = scaleY(pt[pt.length - 1] - y);
         var thisLen2 = dx * dx + dy * dy;
         if (len2 === false || thisLen2 < len2){
           reg = region;
@@ -1136,8 +1452,16 @@ function init(){
 
   function mouseTrackHover(mp){
     // look for the closest node
-    var p1 = closestPoint(poly1, mp[0], mp[1] - cnvHeight / 2);
-    var p2 = closestPoint(poly2, mp[0], mp[1] - cnvHeight / 2);
+    let regions1, regions2;
+    if ('poly1' in demo) {
+      regions1 = demo.poly1.regions;
+      regions2 = demo.poly2.regions;
+    } else {
+      regions1 = demo.shape1;
+      regions2 = demo.shape2;
+    }
+    var p1 = closestPoint(regions1, mp[0], mp[1] - cnvHeight / 2);
+    var p2 = closestPoint(regions2, mp[0], mp[1] - cnvHeight / 2);
     if (p2.len < p1.len)
       p1 = p2;
     if (p1.len > 10){
@@ -1161,20 +1485,22 @@ function init(){
       var dx = mp[0] - dragging[0];
       var dy = mp[1] - dragging[1];
       var pt = hover.region[hover.vert];
-      if (pt[1] + dy < 0)
-        dy = -pt[1];
+      const ix = pt.length - 2;
+      const iy = pt.length - 1;
+      if (pt[iy] + dy < 0)
+        dy = -pt[iy];
       if (document.getElementById('snap').checked){
-        var tx = pt[0] + dx;
-        var ty = pt[1] + dy;
+        var tx = pt[ix] + dx;
+        var ty = pt[iy] + dy;
         tx = Math.round(tx / 10) * 10;
         ty = Math.round(ty / 10) * 10;
-        dx = tx - pt[0];
-        dy = ty - pt[1];
+        dx = tx - pt[ix];
+        dy = ty - pt[iy];
       }
       if (dx !== 0 || dy !== 0){
         dragging = [dragging[0] + dx, dragging[1] + dy];
-        pt[0] = unscaleX(scaleX(pt[0]) + dx);
-        pt[1] = unscaleY(scaleY(pt[1]) + dy);
+        pt[ix] = unscaleX(scaleX(pt[ix]) + dx);
+        pt[iy] = unscaleY(scaleY(pt[iy]) + dy);
         recalc();
       }
     }
@@ -1243,8 +1569,7 @@ function init(){
   });
 }
 
-window.poly1 = poly1;
-window.poly2 = poly2;
+window.demo = demo;
 window.init = init;
 window.recalc = recalc;
 window.setMode = setMode;

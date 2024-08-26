@@ -5,7 +5,11 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import { Segment } from "./Intersecter";
+import {
+  type SegmentBool,
+  SegmentBoolLine,
+  SegmentBoolCurve,
+} from "./Intersecter";
 import type BuildLog from "./BuildLog";
 
 //
@@ -13,11 +17,11 @@ import type BuildLog from "./BuildLog";
 //
 
 function select(
-  segments: Segment[],
+  segments: SegmentBool[],
   selection: number[],
   log: BuildLog | null,
-): Segment[] {
-  const result: Segment[] = [];
+): SegmentBool[] {
+  const result: SegmentBool[] = [];
   for (const seg of segments) {
     const index =
       (seg.myFill.above ? 8 : 0) +
@@ -26,10 +30,19 @@ function select(
       (seg.otherFill && seg.otherFill.below ? 1 : 0);
     if (selection[index] !== 0) {
       // copy the segment to the results, while also calculating the fill status
-      const keep = new Segment(seg.start, seg.end, null, log);
-      keep.myFill.above = selection[index] === 1; // 1 if filled above
-      keep.myFill.below = selection[index] === 2; // 2 if filled below
-      result.push(keep);
+      const fill = {
+        above: selection[index] === 1, // 1 if filled above
+        below: selection[index] === 2, // 2 if filled below
+      };
+      if (seg instanceof SegmentBoolLine) {
+        result.push(new SegmentBoolLine(seg.data, fill, log));
+      } else if (seg instanceof SegmentBoolCurve) {
+        result.push(new SegmentBoolCurve(seg.data, fill, log));
+      } else {
+        throw new Error(
+          "PolyBool: Unknown SegmentBool type in SegmentSelector",
+        );
+      }
     }
   }
   log?.selected(result);
@@ -37,7 +50,7 @@ function select(
 }
 
 export class SegmentSelector {
-  static union(segments: Segment[], log: BuildLog | null) {
+  static union(segments: SegmentBool[], log: BuildLog | null) {
     // primary | secondary
     // above1 below1 above2 below2    Keep?               Value
     //    0      0      0      0   =>   no                  0
@@ -63,7 +76,7 @@ export class SegmentSelector {
     );
   }
 
-  static intersect(segments: Segment[], log: BuildLog | null) {
+  static intersect(segments: SegmentBool[], log: BuildLog | null) {
     // primary & secondary
     // above1 below1 above2 below2    Keep?               Value
     //    0      0      0      0   =>   no                  0
@@ -89,7 +102,7 @@ export class SegmentSelector {
     );
   }
 
-  static difference(segments: Segment[], log: BuildLog | null) {
+  static difference(segments: SegmentBool[], log: BuildLog | null) {
     // primary - secondary
     // above1 below1 above2 below2    Keep?               Value
     //    0      0      0      0   =>   no                  0
@@ -115,7 +128,7 @@ export class SegmentSelector {
     );
   }
 
-  static differenceRev(segments: Segment[], log: BuildLog | null) {
+  static differenceRev(segments: SegmentBool[], log: BuildLog | null) {
     // secondary - primary
     // above1 below1 above2 below2    Keep?               Value
     //    0      0      0      0   =>   no                  0
@@ -141,7 +154,7 @@ export class SegmentSelector {
     );
   }
 
-  static xor(segments: Segment[], log: BuildLog | null) {
+  static xor(segments: SegmentBool[], log: BuildLog | null) {
     // primary ^ secondary
     // above1 below1 above2 below2    Keep?               Value
     //    0      0      0      0   =>   no                  0

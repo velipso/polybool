@@ -5,27 +5,46 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import { type Point, type Geometry } from "./Geometry";
-import { type Segment } from "./Intersecter";
+import { type Geometry } from "./Geometry";
+import { type SegmentBool } from "./Intersecter";
 import type BuildLog from "./BuildLog";
+import { type Segment, SegmentLine, SegmentCurve } from "./Segment";
 
 //
 // converts a list of segments into a list of regions, while also removing
 // unnecessary verticies
 //
 
-export default function SegmentChainer(
-  segments: Segment[],
+export interface IPolyBoolReceiver {
+  beginPath: () => void;
+  moveTo: (x: number, y: number) => void;
+  lineTo: (x: number, y: number) => void;
+  bezierCurveTo: (
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ) => void;
+  closePath: () => void;
+}
+
+export default function SegmentChainer<T extends IPolyBoolReceiver>(
+  segments: SegmentBool[],
+  receiver: T,
   geo: Geometry,
   log: BuildLog | null,
 ) {
-  const chains: Point[][] = [];
-  const regions: Point[][] = [];
+  const chains: Segment[][] = [];
+  const regions: Segment[][] = [];
 
-  for (const seg of segments) {
-    const pt1 = seg.start;
-    const pt2 = seg.end;
-    if (geo.pointsSame(pt1, pt2)) {
+  for (const segb of segments) {
+    let seg = segb.data;
+    const pt1 = seg.start();
+    const pt2 = seg.end();
+
+    if (seg instanceof SegmentLine && geo.isEqualVec2(pt1, pt2)) {
       console.warn(
         "PolyBool: Warning: Zero-length segment detected; your epsilon is " +
           "probably too small or too large",
@@ -36,211 +55,284 @@ export default function SegmentChainer(
     log?.chainStart(seg);
 
     // search for two chains that this segment matches
-    const first_match = {
+    const firstMatch = {
       index: 0,
-      matches_head: false,
-      matches_pt1: false,
+      matchesHead: false,
+      matchesPt1: false,
     };
-    const second_match = {
+    const secondMatch = {
       index: 0,
-      matches_head: false,
-      matches_pt1: false,
+      matchesHead: false,
+      matchesPt1: false,
     };
-    let next_match: typeof first_match | null = first_match;
+    let nextMatch: typeof firstMatch | null = firstMatch;
     function setMatch(
       index: number,
-      matches_head: boolean,
-      matches_pt1: boolean,
+      matchesHead: boolean,
+      matchesPt1: boolean,
     ) {
       // return true if we've matched twice
-      if (next_match) {
-        next_match.index = index;
-        next_match.matches_head = matches_head;
-        next_match.matches_pt1 = matches_pt1;
+      if (nextMatch) {
+        nextMatch.index = index;
+        nextMatch.matchesHead = matchesHead;
+        nextMatch.matchesPt1 = matchesPt1;
       }
-      if (next_match === first_match) {
-        next_match = second_match;
+      if (nextMatch === firstMatch) {
+        nextMatch = secondMatch;
         return false;
       }
-      next_match = null;
+      nextMatch = null;
       return true; // we've matched twice, we're done here
     }
     for (let i = 0; i < chains.length; i++) {
       const chain = chains[i];
-      const head = chain[0];
-      const tail = chain[chain.length - 1];
-      if (geo.pointsSame(head, pt1)) {
+      const head = chain[0].start();
+      const tail = chain[chain.length - 1].end();
+      if (geo.isEqualVec2(head, pt1)) {
         if (setMatch(i, true, true)) {
           break;
         }
-      } else if (geo.pointsSame(head, pt2)) {
+      } else if (geo.isEqualVec2(head, pt2)) {
         if (setMatch(i, true, false)) {
           break;
         }
-      } else if (geo.pointsSame(tail, pt1)) {
+      } else if (geo.isEqualVec2(tail, pt1)) {
         if (setMatch(i, false, true)) {
           break;
         }
-      } else if (geo.pointsSame(tail, pt2)) {
+      } else if (geo.isEqualVec2(tail, pt2)) {
         if (setMatch(i, false, false)) {
           break;
         }
       }
     }
 
-    if (next_match === first_match) {
+    if (nextMatch === firstMatch) {
       // we didn't match anything, so create a new chain
-      chains.push([pt1, pt2]);
-      log?.chainNew(pt1, pt2);
-      continue;
-    }
-
-    if (next_match === second_match) {
+      log?.chainNew(seg);
+      chains.push([seg]);
+    } else if (nextMatch === secondMatch) {
       // we matched a single chain
+      const index = firstMatch.index;
+      log?.chainMatch(index);
 
-      log?.chainMatch(first_match.index);
-
-      // add the other point to the apporpriate end, and check to see if we've closed the
-      // chain into a loop
-
-      const index = first_match.index;
-      const pt = first_match.matches_pt1 ? pt2 : pt1; // if we matched pt1, then we add pt2, etc
-      const addToHead = first_match.matches_head; // if we matched at head, then add to the head
-
+      // add the other point to the apporpriate end
       const chain = chains[index];
-      let grow = addToHead ? chain[0] : chain[chain.length - 1];
-      const grow2 = addToHead ? chain[1] : chain[chain.length - 2];
-      const oppo = addToHead ? chain[chain.length - 1] : chain[0];
-      const oppo2 = addToHead ? chain[chain.length - 2] : chain[1];
-
-      if (geo.pointsCollinear(grow2, grow, pt)) {
-        // grow isn't needed because it's directly between grow2 and pt:
-        // grow2 ---grow---> pt
-        if (addToHead) {
-          log?.chainRemoveHead(first_match.index, pt);
-          chain.shift();
+      if (firstMatch.matchesHead) {
+        if (firstMatch.matchesPt1) {
+          seg = seg.reverse();
+          log?.chainAddHead(index, seg);
+          chain.unshift(seg);
         } else {
-          log?.chainRemoveTail(first_match.index, pt);
-          chain.pop();
+          log?.chainAddHead(index, seg);
+          chain.unshift(seg);
         }
-        grow = grow2; // old grow is gone... new grow is what grow2 was
+      } else {
+        if (firstMatch.matchesPt1) {
+          log?.chainAddTail(index, seg);
+          chain.push(seg);
+        } else {
+          seg = seg.reverse();
+          log?.chainAddTail(index, seg);
+          chain.push(seg);
+        }
       }
 
-      if (geo.pointsSame(oppo, pt)) {
-        // we're closing the loop, so remove chain from chains
-        chains.splice(index, 1);
-
-        if (geo.pointsCollinear(oppo2, oppo, grow)) {
-          // oppo isn't needed because it's directly between oppo2 and grow:
-          // oppo2 ---oppo--->grow
-          if (addToHead) {
-            log?.chainRemoveTail(first_match.index, grow);
-            chain.pop();
-          } else {
-            log?.chainRemoveHead(first_match.index, grow);
+      // simplify chain
+      if (seg instanceof SegmentLine) {
+        if (firstMatch.matchesHead) {
+          const next = chain[1];
+          if (
+            next &&
+            next instanceof SegmentLine &&
+            geo.isCollinear(seg.p0, next.p0, next.p1)
+          ) {
+            next.setStart(seg.p0);
+            log?.chainSimplifyHead(index, next);
             chain.shift();
+          }
+        } else {
+          const next = chain[chain.length - 2];
+          if (
+            next &&
+            next instanceof SegmentLine &&
+            geo.isCollinear(next.p0, next.p1, seg.p1)
+          ) {
+            next.setEnd(seg.p1);
+            log?.chainSimplifyTail(index, next);
+            chain.pop();
+          }
+        }
+      }
+
+      // check for closed chain
+      const segS = chain[0];
+      const segE = chain[chain.length - 1];
+      if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
+        if (
+          segS !== segE &&
+          segS instanceof SegmentLine &&
+          segE instanceof SegmentLine &&
+          geo.isCollinear(segS.p1, segS.p0, segE.p0)
+        ) {
+          // closing the chain caused two collinear lines to join, so merge them
+          segS.setStart(segE.p0);
+          log?.chainSimplifyClose(index, segS);
+          chain.pop();
+        }
+
+        // we have a closed chain!
+        log?.chainClose(index);
+        chains.splice(index, 1);
+        regions.push(chain);
+      }
+    } else {
+      // otherwise, we matched two chains, so we need to combine those chains together
+
+      function reverseChain(index: number) {
+        log?.chainReverse(index);
+        const newChain: Segment[] = [];
+        for (const s of chains[index]) {
+          newChain.unshift(s.reverse());
+        }
+        chains[index] = newChain;
+      }
+
+      function appendChain(index1: number, index2: number) {
+        // index1 gets index2 appended to it, and index2 is removed
+        const chain1 = chains[index1];
+        const chain2 = chains[index2];
+
+        // add seg to chain1's tail
+        log?.chainAddTail(index1, seg);
+        chain1.push(seg);
+
+        // simplify chain1's tail
+        if (seg instanceof SegmentLine) {
+          const next = chain1[chain1.length - 2];
+          if (
+            next &&
+            next instanceof SegmentLine &&
+            geo.isCollinear(next.p0, next.p1, seg.p1)
+          ) {
+            next.setEnd(seg.p1);
+            log?.chainSimplifyTail(index1, next);
+            chain1.pop();
           }
         }
 
-        log?.chainClose(first_match.index);
+        // simplify chain2's head
+        const tail = chain1[chain1.length - 1];
+        const head = chain2[0];
+        if (
+          tail instanceof SegmentLine &&
+          head instanceof SegmentLine &&
+          geo.isCollinear(tail.p0, head.p0, head.p1)
+        ) {
+          tail.setEnd(head.p1);
+          log?.chainSimplifyJoin(index1, index2, tail);
+          chain2.shift();
+        }
 
-        // we have a closed chain!
-        regions.push(chain);
-        continue;
+        log?.chainJoin(index1, index2);
+        chains[index1] = chain1.concat(chain2);
+        chains.splice(index2, 1);
       }
 
-      // not closing a loop, so just add it to the apporpriate side
-      if (addToHead) {
-        log?.chainAddHead(first_match.index, pt);
-        chain.unshift(pt);
-      } else {
-        log?.chainAddTail(first_match.index, pt);
-        chain.push(pt);
-      }
-      continue;
-    }
+      const F = firstMatch.index;
+      const S = secondMatch.index;
 
-    // otherwise, we matched two chains, so we need to combine those chains together
+      log?.chainConnect(F, S);
 
-    function reverseChain(index: number) {
-      log?.chainReverse(index);
-      chains[index].reverse(); // gee, that's easy
-    }
-
-    function appendChain(index1: number, index2: number) {
-      // index1 gets index2 appended to it, and index2 is removed
-      const chain1 = chains[index1];
-      const chain2 = chains[index2];
-      let tail = chain1[chain1.length - 1];
-      const tail2 = chain1[chain1.length - 2];
-      const head = chain2[0];
-      const head2 = chain2[1];
-
-      if (geo.pointsCollinear(tail2, tail, head)) {
-        // tail isn't needed because it's directly between tail2 and head
-        // tail2 ---tail---> head
-        log?.chainRemoveTail(index1, tail);
-        chain1.pop();
-        tail = tail2; // old tail is gone... new tail is what tail2 was
-      }
-
-      if (geo.pointsCollinear(tail, head, head2)) {
-        // head isn't needed because it's directly between tail and head2
-        // tail ---head---> head2
-        log?.chainRemoveHead(index2, head);
-        chain2.shift();
-      }
-
-      log?.chainJoin(index1, index2);
-      chains[index1] = chain1.concat(chain2);
-      chains.splice(index2, 1);
-    }
-
-    const F = first_match.index;
-    const S = second_match.index;
-
-    log?.chainConnect(F, S);
-
-    const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
-    if (first_match.matches_head) {
-      if (second_match.matches_head) {
-        if (reverseF) {
-          // <<<< F <<<< --- >>>> S >>>>
-          reverseChain(F);
-          // >>>> F >>>> --- >>>> S >>>>
-          appendChain(F, S);
+      const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
+      if (firstMatch.matchesHead) {
+        if (secondMatch.matchesHead) {
+          if (reverseF) {
+            if (!firstMatch.matchesPt1) {
+              // <<<< F <<<< <-- >>>> S >>>>
+              seg = seg.reverse();
+            }
+            // <<<< F <<<< --> >>>> S >>>>
+            reverseChain(F);
+            // >>>> F >>>> --> >>>> S >>>>
+            appendChain(F, S);
+          } else {
+            if (firstMatch.matchesPt1) {
+              // <<<< F <<<< --> >>>> S >>>>
+              seg = seg.reverse();
+            }
+            // <<<< F <<<< <-- >>>> S >>>>
+            reverseChain(S);
+            // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+            // >>>> S >>>> --> >>>> F >>>>
+            appendChain(S, F);
+          }
         } else {
-          // <<<< F <<<< --- >>>> S >>>>
-          reverseChain(S);
-          // <<<< F <<<< --- <<<< S <<<<   logically same as:
-          // >>>> S >>>> --- >>>> F >>>>
+          if (firstMatch.matchesPt1) {
+            // <<<< F <<<< --> >>>> S >>>>
+            seg = seg.reverse();
+          }
+          // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+          // >>>> S >>>> --> >>>> F >>>>
           appendChain(S, F);
         }
       } else {
-        // <<<< F <<<< --- <<<< S <<<<   logically same as:
-        // >>>> S >>>> --- >>>> F >>>>
-        appendChain(S, F);
-      }
-    } else {
-      if (second_match.matches_head) {
-        // >>>> F >>>> --- >>>> S >>>>
-        appendChain(F, S);
-      } else {
-        if (reverseF) {
-          // >>>> F >>>> --- <<<< S <<<<
-          reverseChain(F);
-          // <<<< F <<<< --- <<<< S <<<<   logically same as:
-          // >>>> S >>>> --- >>>> F >>>>
-          appendChain(S, F);
-        } else {
-          // >>>> F >>>> --- <<<< S <<<<
-          reverseChain(S);
-          // >>>> F >>>> --- >>>> S >>>>
+        if (secondMatch.matchesHead) {
+          if (!firstMatch.matchesPt1) {
+            // >>>> F >>>> <-- >>>> S >>>>
+            seg = seg.reverse();
+          }
+          // >>>> F >>>> --> >>>> S >>>>
           appendChain(F, S);
+        } else {
+          if (reverseF) {
+            if (firstMatch.matchesPt1) {
+              // >>>> F >>>> --> <<<< S <<<<
+              seg = seg.reverse();
+            }
+            // >>>> F >>>> <-- <<<< S <<<<
+            reverseChain(F);
+            // <<<< F <<<< <-- <<<< S <<<<   logically same as:
+            // >>>> S >>>> --> >>>> F >>>>
+            appendChain(S, F);
+          } else {
+            if (!firstMatch.matchesPt1) {
+              // >>>> F >>>> <-- <<<< S <<<<
+              seg = seg.reverse();
+            }
+            // >>>> F >>>> --> <<<< S <<<<
+            reverseChain(S);
+            // >>>> F >>>> --> >>>> S >>>>
+            appendChain(F, S);
+          }
         }
       }
     }
   }
 
-  return regions;
+  for (const region of regions) {
+    receiver.beginPath();
+    for (let i = 0; i < region.length; i++) {
+      const seg = region[i];
+      if (i === 0) {
+        const p0 = seg.start();
+        receiver.moveTo(p0[0], p0[1]);
+      }
+      if (seg instanceof SegmentLine) {
+        receiver.lineTo(seg.p1[0], seg.p1[1]);
+      } else if (seg instanceof SegmentCurve) {
+        receiver.bezierCurveTo(
+          seg.p1[0],
+          seg.p1[1],
+          seg.p2[0],
+          seg.p2[1],
+          seg.p3[0],
+          seg.p3[1],
+        );
+      } else {
+        throw new Error("PolyBool: Unknown segment instance");
+      }
+    }
+    receiver.closePath();
+  }
 }

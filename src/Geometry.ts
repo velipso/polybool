@@ -5,46 +5,38 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-export type Point = [number, number];
+export type Vec2 = [number, number];
 
-export enum AlongIntersection {
-  BeforeStart,
-  EqualStart,
-  BetweenStartAndEnd,
-  EqualEnd,
-  AfterEnd,
+export function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
 }
 
-export interface IntersectionResult {
-  p: Point; // intersection point
-  alongA: AlongIntersection; // where this point is along the A line
-  alongB: AlongIntersection; // where this point is along the B line
+export function lerpVec2(a: Vec2, b: Vec2, t: number): Vec2 {
+  return [lerp(a[0], b[0], t), lerp(a[1], b[1], t)];
+}
+
+export function boundingBoxesIntersect(
+  bbox1: [Vec2, Vec2],
+  bbox2: [Vec2, Vec2],
+) {
+  const [b1min, b1max] = bbox1;
+  const [b2min, b2max] = bbox2;
+  return !(
+    b1min[0] > b2max[0] ||
+    b1max[0] < b2min[0] ||
+    b1min[1] > b2max[1] ||
+    b1max[1] < b2min[1]
+  );
 }
 
 export abstract class Geometry {
-  abstract pointAboveOrOnLine(p: Point, left: Point, right: Point): boolean;
-  abstract pointBetween(p: Point, left: Point, right: Point): boolean;
-  abstract pointsSameX(p1: Point, p2: Point): boolean;
-  abstract pointsSameY(p1: Point, p2: Point): boolean;
-  abstract pointsCollinear(p1: Point, p2: Point, p3: Point): boolean;
-  abstract linesIntersect(
-    aStart: Point,
-    aEnd: Point,
-    bStart: Point,
-    bEnd: Point,
-  ): IntersectionResult | null;
-
-  pointsSame(p1: Point, p2: Point) {
-    return this.pointsSameX(p1, p2) && this.pointsSameY(p1, p2);
-  }
-
-  pointsCompare(p1: Point, p2: Point) {
-    // returns -1 if p1 is smaller, 1 if p2 is smaller, 0 if equal
-    if (this.pointsSameX(p1, p2)) {
-      return this.pointsSameY(p1, p2) ? 0 : p1[1] < p2[1] ? -1 : 1;
-    }
-    return p1[0] < p2[0] ? -1 : 1;
-  }
+  abstract snap0(v: number): number;
+  abstract snap01(v: number): number;
+  abstract atan2deg(dy: number, dx: number): number; // returns 0-360
+  abstract isCollinear(p1: Vec2, p2: Vec2, p3: Vec2): boolean;
+  abstract solveCubic(a: number, b: number, c: number, d: number): number[];
+  abstract isEqualVec2(a: Vec2, b: Vec2): boolean;
+  abstract compareVec2(a: Vec2, b: Vec2): number;
 }
 
 export class GeometryEpsilon extends Geometry {
@@ -55,51 +47,37 @@ export class GeometryEpsilon extends Geometry {
     this.epsilon = epsilon;
   }
 
-  pointAboveOrOnLine(p: Point, left: Point, right: Point) {
-    const Ax = left[0];
-    const Ay = left[1];
-    const Bx = right[0];
-    const By = right[1];
-    const Cx = p[0];
-    const Cy = p[1];
-    return (Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax) >= -this.epsilon;
-  }
-
-  pointBetween(p: Point, left: Point, right: Point) {
-    // p must be collinear with left->right
-    // returns false if p == left, p == right, or left == right
-    const d_py_ly = p[1] - left[1];
-    const d_rx_lx = right[0] - left[0];
-    const d_px_lx = p[0] - left[0];
-    const d_ry_ly = right[1] - left[1];
-
-    const dot = d_px_lx * d_rx_lx + d_py_ly * d_ry_ly;
-    // if `dot` is 0, then `p` == `left` or `left` == `right` (reject)
-    // if `dot` is less than 0, then `p` is to the left of `left` (reject)
-    if (dot < this.epsilon) {
-      return false;
+  snap0(v: number) {
+    if (Math.abs(v) < this.epsilon) {
+      return 0;
     }
+    return v;
+  }
 
-    const sqlen = d_rx_lx * d_rx_lx + d_ry_ly * d_ry_ly;
-    // if `dot` > `sqlen`, then `p` is to the right of `right` (reject)
-    // therefore, if `dot - sqlen` is greater than 0, then `p` is to the right
-    // of `right` (reject)
-    if (dot - sqlen > -this.epsilon) {
-      return false;
+  snap01(v: number) {
+    if (Math.abs(v) < this.epsilon) {
+      return 0;
     }
-
-    return true;
+    if (Math.abs(1 - v) < this.epsilon) {
+      return 1;
+    }
+    return v;
   }
 
-  pointsSameX(p1: Point, p2: Point) {
-    return Math.abs(p1[0] - p2[0]) < this.epsilon;
+  atan2deg(dy: number, dx: number) {
+    if (Math.abs(dy) < this.epsilon) {
+      return dx > 0 || Math.abs(dx) < this.epsilon ? 0 : 180;
+    } else if (Math.abs(dx) < this.epsilon) {
+      return dy < 0 ? 270 : 90;
+    } else if (Math.abs(dx - dy) < this.epsilon) {
+      return dx < 0 ? 225 : 45;
+    } else if (Math.abs(dx + dy) < this.epsilon) {
+      return dx < 0 ? 315 : 135;
+    }
+    return ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
   }
 
-  pointsSameY(p1: Point, p2: Point) {
-    return Math.abs(p1[1] - p2[1]) < this.epsilon;
-  }
-
-  pointsCollinear(p1: Point, p2: Point, p3: Point) {
+  isCollinear(p1: Vec2, p2: Vec2, p3: Vec2) {
     // does pt1->pt2->pt3 make a straight line?
     // essentially this is just checking to see if
     //   slope(pt1->pt2) === slope(pt2->pt3)
@@ -111,53 +89,88 @@ export class GeometryEpsilon extends Geometry {
     return Math.abs(dx1 * dy2 - dx2 * dy1) < this.epsilon;
   }
 
-  linesIntersect(aStart: Point, aEnd: Point, bStart: Point, bEnd: Point) {
-    // returns null if the lines are coincident (e.g., parallel or on top of
-    // each other)
-    //
-    // returns an object if the lines intersect:
-    //   {
-    //     p: [x, y],    where the intersection point is at
-    //     alongA: where intersection point is along A,
-    //     alongB: where intersection point is along B
-    //   }
-    //
-    // alongA and alongB will each be one of AlongIntersection, depending on
-    // where the intersection point is along the A and B lines
-    //
-    const adx = aEnd[0] - aStart[0];
-    const ady = aEnd[1] - aStart[1];
-    const bdx = bEnd[0] - bStart[0];
-    const bdy = bEnd[1] - bStart[1];
+  solveCubic(a: number, b: number, c: number, d: number) {
+    const b2 = 2 * b;
+    const asq = a * a;
+    const acb = asq * a;
 
-    const axb = adx * bdy - ady * bdx;
-    if (Math.abs(axb) < this.epsilon) {
-      return null; // lines are coincident
+    if (Math.abs(acb) < this.epsilon) {
+      // quadratic
+      if (Math.abs(b) < this.epsilon) {
+        // linear
+        if (Math.abs(c) < this.epsilon) {
+          // horizontal line
+          if (Math.abs(d) < this.epsilon) {
+            // horizontal line at 0
+            return [0];
+          }
+          return [];
+        }
+        return [-d / c];
+      }
+      let D = c * c - 4 * b * d;
+      if (Math.abs(D) < this.epsilon) {
+        return [-c / b2];
+      } else if (D > 0) {
+        D = Math.sqrt(D);
+        return b2 < 0
+          ? [(-c + D) / b2, (-c - D) / b2]
+          : [(-c - D) / b2, (-c + D) / b2];
+      }
+      return [];
     }
 
-    const dx = aStart[0] - bStart[0];
-    const dy = aStart[1] - bStart[1];
+    // convert to depressed cubic
+    const bsq = b * b;
+    let p = (3 * a * c - bsq) / (3 * asq);
+    const q = (bsq * b2 - 9 * a * b * c + 27 * asq * d) / (27 * acb);
+    const revert = -b / (3 * a);
 
-    const A = (bdx * dy - bdy * dx) / axb;
-    const B = (adx * dy - ady * dx) / axb;
+    if (Math.abs(p) < this.epsilon) {
+      return [revert + Math.cbrt(-q)];
+    }
+    if (Math.abs(q) < this.epsilon) {
+      if (p < 0) {
+        p = Math.sqrt(-p);
+        return [revert - p, revert, revert + p];
+      }
+      return [revert];
+    }
 
-    // categorizes where along the line the intersection point is at
-    const categorize = (v: number): AlongIntersection =>
-      v <= -this.epsilon
-        ? AlongIntersection.BeforeStart
-        : v < this.epsilon
-          ? AlongIntersection.EqualStart
-          : v - 1 <= -this.epsilon
-            ? AlongIntersection.BetweenStartAndEnd
-            : v - 1 < this.epsilon
-              ? AlongIntersection.EqualEnd
-              : AlongIntersection.AfterEnd;
+    const D = (q * q) / 4 + (p * p * p) / 27;
+    if (Math.abs(D) < this.epsilon) {
+      const qop = q / p;
+      return qop < 0
+        ? [revert + 3 * qop, revert - 1.5 * qop]
+        : [revert - 1.5 * qop, revert + 3 * qop];
+    }
+    if (D > 0) {
+      const u = Math.cbrt(-q / 2 - Math.sqrt(D));
+      return [revert + u - p / (3 * u)];
+    }
 
-    const p: Point = [aStart[0] + A * adx, aStart[1] + A * ady];
-    return {
-      alongA: categorize(A),
-      alongB: categorize(B),
-      p,
-    };
+    const u = 2 * Math.sqrt(-p / 3);
+    const t = Math.acos((3 * q) / p / u) / 3;
+    const k = (2 * Math.PI) / 3;
+    return [
+      revert + u * Math.cos(t - 2 * k),
+      revert + u * Math.cos(t - k),
+      revert + u * Math.cos(t),
+    ];
+  }
+
+  isEqualVec2(a: Vec2, b: Vec2) {
+    return (
+      Math.abs(a[0] - b[0]) < this.epsilon &&
+      Math.abs(a[1] - b[1]) < this.epsilon
+    );
+  }
+
+  compareVec2(a: Vec2, b: Vec2) {
+    // returns -1 if a is smaller, 1 if b is smaller, 0 if equal
+    if (Math.abs(b[0] - a[0]) < this.epsilon) {
+      return Math.abs(b[1] - a[1]) < this.epsilon ? 0 : a[1] < b[1] ? -1 : 1;
+    }
+    return a[0] < b[0] ? -1 : 1;
   }
 }

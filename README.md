@@ -11,7 +11,8 @@ Boolean operations on polygons (union, intersection, difference, xor).
 4. Uses formulas that take floating point irregularities into account (via
    configurable epsilon)
 5. Provides an API for constructing efficient sequences of operations
-6. TypeScript implementation
+6. Handles line segments (stable) and bezier cubic curves (experimental)
+7. TypeScript implementation
 
 # Resources
 
@@ -44,32 +45,94 @@ directory for a single file build.
 ```typescript
 import polybool from '@velipso/polybool';
 
-polybool.intersect({
-    regions: [
-      [[50,50], [150,150], [190,50]],
-      [[130,50], [290,150], [290,50]]
-    ],
-    inverted: false
-  }, {
-    regions: [
-      [[110,20], [110,110], [20,20]],
-      [[130,170], [130,20], [260,20], [260,170]]
-    ],
-    inverted: false
-  });
-===> {
-  regions: [
-    [[50,50], [110,50], [110,110]],
-    [[178,80], [130,50], [130,130], [150,150]],
-    [[178,80], [190,50], [260,50], [260,131.25]]
-  ],
-  inverted: false
+const shape1 = polybool.shape()
+  .beginPath()
+  .moveTo(50, 50)
+  .lineTo(150, 150)
+  .lineTo(190, 50)
+  .closePath()
+  .beginPath()
+  .moveTo(130, 50)
+  .lineTo(290, 150)
+  .lineTo(290, 50)
+  .closePath();
+
+const shape2 = polybool.shape()
+  .beginPath()
+  .moveTo(110, 20)
+  .lineTo(110, 110)
+  .lineTo(20, 20)
+  .closePath()
+  .beginPath()
+  .moveTo(130, 170)
+  .lineTo(130, 20)
+  .lineTo(260, 20)
+  .lineTo(260, 170)
+  .closePath();
+
+const receiver = {
+  beginPath: () => { console.log('beginPath'); },
+  moveTo: (x: number, y: number) => { console.log('moveTo', x, y); },
+  lineTo: (x: number, y: number) => { console.log('lineTo', x, y); },
+  bezierCurveTo: (
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ) => { console.log('bezierCurveTo', cp1x, cp1y, cp2x, cp2y, x, y); },
+  closePath: () => { console.log('closePath'); }
 }
+
+// start with the first shape
+shape1
+  // combine it with the second shape
+  .combine(shape2)
+  // perform the operation
+  .intersect()
+  // output results to the receiver object
+  .output(receiver);
+
+// output:
+//   beginPath
+//   moveTo 110 110
+//   lineTo 50 50
+//   lineTo 110 50
+//   lineTo 110 110
+//   closePath
+//   beginPath
+//   moveTo 150 150
+//   lineTo 178 80
+//   lineTo 130 50
+//   lineTo 130 130
+//   lineTo 150 150
+//   closePath
+//   beginPath
+//   moveTo 260 131.25
+//   lineTo 178 80
+//   lineTo 190 50
+//   lineTo 260 50
+//   lineTo 260 131.25
+//   closePath
 ```
 
 ![Example](https://github.com/velipso/polybool/raw/main/example.png)
 
-## Basic Usage
+# API Design
+
+There are three different APIs, each of which use the same underlying algorithms:
+
+1. Simplified Polygonal API (lines only)
+2. Polygonal API (lines only)
+3. Instructional API (lines and curves)
+
+The Simplified Polygonal API is implemented on top of the Polygonal API, and the Polygonal API is
+implemented on top of the Instructional API.
+
+The reason for multiple APIs is to maintain backwards compatibility and to make it easier to use.
+
+# Simplified Polygonal API
 
 ```typescript
 import polybool from '@velipso/polybool';
@@ -95,7 +158,7 @@ Where `poly1`, `poly2`, and the return value are Polygon objects, in the format 
 }
 ```
 
-# Core API
+# Polygonal API
 
 ```typescript
 const segments = polybool.segments(polygon);
@@ -109,10 +172,10 @@ const polygon  = polybool.polygon(segments);
 ```
 
 Depending on your needs, it might be more efficient to construct your own
-sequence of operations using the lower-level API.  Note that `polybool.union`,
+sequence of operations using the Polygonal API.  Note that `polybool.union`,
 `polybool.intersect`, etc, are just thin wrappers for convenience.
 
-There are three types of objects you will encounter in the core API:
+There are three types of objects you will encounter in the Polygonal API:
 
 1. Polygons (discussed above, this is a list of regions and an `inverted` flag)
 2. Segments
@@ -150,7 +213,7 @@ for (let i = 1; i < polygons.length; i++)
 return result;
 ```
 
-Instead, it's more efficient to use the core API directly, like this:
+Instead, it's more efficient to use the Polygonal API directly, like this:
 
 ```typescript
 // works AND efficient
@@ -179,7 +242,7 @@ return {
 };
 ```
 
-Instead, it's more efficient to use the core API directly, like this:
+Instead, it's more efficient to use the Polygonal API directly, like this:
 
 ```typescript
 // works AND efficient
@@ -214,6 +277,216 @@ Instead, skip the combination and selection phase:
 ```typescript
 // works AND efficient
 const cleaned = polybool.polygon(polybool.segments(polygon));
+```
+
+# Instructional API
+
+The Instructional API does not have an intermediate data format (like the Polygon from before), and
+does not support an `inverted` flag.
+
+Instead, the Instructional API is modeled after the
+[CanvasRenderingContext2D](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D)
+API.
+
+Shapes are created using `beginPath`, `moveTo`, `lineTo`, `bezierCurveTo`, and `closePath`, then
+combined together, operated on, and output to a _receiver_.
+
+The receiver is an object with `beginPath`, `moveTo`, `lineTo`, `bezierCurveTo`, and `closePath`
+defined, and those methods are called in order to output the result.
+
+```typescript
+export interface IPolyBoolReceiver {
+  beginPath: () => void;
+  moveTo: (x: number, y: number) => void;
+  lineTo: (x: number, y: number) => void;
+  bezierCurveTo: (
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ) => void;
+  closePath: () => void;
+}
+```
+
+## Shapes
+
+The first step is to create shapes:
+
+```typescript
+const shape = polybool.shape()
+  .beginPath()
+  .moveTo(50, 50)
+  .lineTo(150, 150)
+  .lineTo(190, 50)
+  .closePath()
+  .beginPath()
+  .moveTo(130, 50)
+  .lineTo(290, 150)
+  .lineTo(290, 50)
+  .closePath();
+```
+
+Note that shapes can have multiple regions by calling `beginPath`/`closePath` more than once.
+
+Shapes can also have bezier curves by calling `bezierCurveTo(...)` as well, but support for curves
+is still experimental and unstable.
+
+```typescript
+class Shape {
+  beginPath(): Shape;
+  moveTo(x: number, y: number): Shape;
+  lineTo(x: number, y: number): Shape;
+  bezierCurveTo(
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ): Shape;
+  closePath(): Shape;
+  // ...continued below
+}
+```
+
+## Combining Shapes
+
+Once you have multiple shapes, you can combine them:
+
+```typescript
+const combinedShape1 = shape1.combine(shape2);
+const combinedShape2 = shape1.combine(shape3);
+```
+
+Notice that you can use shapes in multiple operations, but once you use a shape in an operation,
+you can't add more lines or curves to it.
+
+```
+class Shape {
+  // ...continued from above
+  combine(shape: Shape): ShapeCombined;
+  // ...continued below
+}
+```
+
+## Performing an Operation
+
+Once you have a combined shape, you can generate new shapes by performing a boolean operation:
+
+```typscript
+const intersect = combinedShape1.intersect();
+const union = combinedShape1.union();
+```
+
+Notice that you can use a combined shape more than once, to produce different boolean operations.
+
+```typscript
+class ShapeCombined {
+  union(): Shape;
+  intersect(): Shape;
+  difference(): Shape; // shape1 - shape2
+  differenceRev(): Shape; // shape2 - shape1
+  xor(): Shape;
+}
+```
+
+## Outputting Results
+
+_Any_ shape can be output to a _receiver_:
+
+```typescript
+shape.output(receiver);
+```
+
+Notice that `shape` could be the result of a boolean operation, but it doesn't have to be.
+
+```typescript
+class Shape {
+  // ...continued from above
+  output<T extends IPolyBoolReceiver>(receiver: T): T;
+}
+```
+
+The `receiver` object is returned.
+
+## Implementing Inversion
+
+If you need to perform logic on inverted shapes like the Polygonal API supports, a key observation
+is that you can represent the same result by shuffling around inversion flags and choosing the right
+operation.
+
+For example, if you are intersecting two shapes, and the first one is inverted, then that is
+equivalent to the `differenceRev` operation.
+
+This is how inversion is supported in the Polygonal API, even though it is built on top of the
+Instructional API which does not support inversion.
+
+Please check the source code to see how inversion is calculated. Here is intersection, for example:
+
+```typescript
+selectIntersect(combined: CombinedSegments): Segments {
+  return {
+    shape: combined.inverted1
+      ? combined.inverted2
+        ? combined.shape.union()
+        : combined.shape.differenceRev()
+      : combined.inverted2
+        ? combined.shape.difference()
+        : combined.shape.intersect(),
+    inverted: combined.inverted1 && combined.inverted2,
+  };
+}
+```
+
+Essentially, this represents observations like `intersect(~A, ~B) = ~union(A, B)`,
+[etc](https://en.wikipedia.org/wiki/De_Morgan's_laws).
+
+## Advanced Example 1
+
+How to union a list of shapes together:
+
+```typescript
+let result = shapes[0];
+for (let i = 1; i < shapes.length; i++)
+  result = result.combine(shapes[i]).union();
+result.output(receiver);
+```
+
+## Advanced Example 2
+
+How to calculate all operations on two polygons:
+
+```typescript
+// works but not efficient
+const combined = shape1.combine(shape2);
+combined.union().output(receiverUnion);
+combined.intersect().output(receiverIntersect);
+combined.difference().output(receiverDifference);
+combined.differenceRev().output(receiverDifferenceRev);
+combined.xor().output(receiverXor);
+```
+
+## Advanced Example 3
+
+As an added bonus, you can simplify shapes by outputting them directly.
+
+Suppose you have garbage polygon data and just want to clean it up.  The naive
+way to do it would be:
+
+```typescript
+// union the polygon with nothing in order to clean up the data
+// works but not efficient
+shape1.combine(polybool.shape()).union().output(receiver);
+```
+
+Instead, skip the combination and operation:
+
+```typescript
+// works AND efficient
+shape1.output(receiver);
 ```
 
 # Epsilon
