@@ -364,7 +364,7 @@ const combinedShape2 = shape1.combine(shape3);
 Notice that you can use shapes in multiple operations, but once you use a shape in an operation,
 you can't add more lines or curves to it.
 
-```
+```typescript
 class Shape {
   // ...continued from above
   combine(shape: Shape): ShapeCombined;
