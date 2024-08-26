@@ -16,7 +16,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Resources
 
-* [Demo + Animation](https://unpkg.com/@velipso/polybool@1.0.0/demo/demo.html)
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.0/demo/demo.html)
 * [Companion Tutorial](https://sean.fun/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
@@ -376,14 +376,14 @@ class Shape {
 
 Once you have a combined shape, you can generate new shapes by performing a boolean operation:
 
-```typscript
+```typescript
 const intersect = combinedShape1.intersect();
 const union = combinedShape1.union();
 ```
 
 Notice that you can use a combined shape more than once, to produce different boolean operations.
 
-```typscript
+```typescript
 class ShapeCombined {
   union(): Shape;
   intersect(): Shape;
