@@ -16,7 +16,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Resources
 
-* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.0/demo/demo.html)
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.1/demo/demo.html)
 * [Companion Tutorial](https://sean.fun/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
@@ -41,6 +41,83 @@ Or, for the browser, look in the [`dist/`](https://github.com/velipso/polybool/t
 directory for a single file build.
 
 # Example
+
+![Example](https://github.com/velipso/polybool/raw/main/example.png)
+
+Using the Simplified Polygonal API:
+
+```typescript
+import polybool from '@velipso/polybool';
+
+console.log(polybool.intersect(
+  {
+    regions: [
+      [[50,50], [150,150], [190,50]],
+      [[130,50], [290,150], [290,50]]
+    ],
+    inverted: false
+  },
+  {
+    regions: [
+      [[110,20], [110,110], [20,20]],
+      [[130,170], [130,20], [260,20], [260,170]]
+    ],
+    inverted: false
+  }
+));
+
+// output:
+// {
+//   regions: [
+//     [[50,50], [110,50], [110,110]],
+//     [[178,80], [130,50], [130,130], [150,150]],
+//     [[178,80], [190,50], [260,50], [260,131.25]]
+//   ],
+//   inverted: false
+// }
+```
+
+Using the Polygonal API:
+
+```typescript
+import polybool from '@velipso/polybool';
+
+const poly1 = {
+  regions: [
+    [[50,50], [150,150], [190,50]],
+    [[130,50], [290,150], [290,50]]
+  ],
+  inverted: false
+};
+
+const poly2 = {
+  regions: [
+    [[110,20], [110,110], [20,20]],
+    [[130,170], [130,20], [260,20], [260,170]]
+  ],
+  inverted: false
+};
+
+const segs1 = polybool.segments(poly1);
+cosnt segs2 = polybool.segments(poly2);
+const combined = polybool.combine(segs1, segs2);
+const segs3 = polybool.selectIntersect(combined);
+const result = polybool.polygon(segs3);
+
+console.log(result);
+
+// output:
+// {
+//   regions: [
+//     [[50,50], [110,50], [110,110]],
+//     [[178,80], [130,50], [130,130], [150,150]],
+//     [[178,80], [190,50], [260,50], [260,131.25]]
+//   ],
+//   inverted: false
+// }
+```
+
+Using the Instructional API:
 
 ```typescript
 import polybool from '@velipso/polybool';
@@ -117,15 +194,13 @@ shape1
 //   closePath
 ```
 
-![Example](https://github.com/velipso/polybool/raw/main/example.png)
-
 # API Design
 
 There are three different APIs, each of which use the same underlying algorithms:
 
-1. Simplified Polygonal API (lines only)
-2. Polygonal API (lines only)
-3. Instructional API (lines and curves)
+1. Simplified Polygonal API
+2. Polygonal API
+3. Instructional API
 
 The Simplified Polygonal API is implemented on top of the Polygonal API, and the Polygonal API is
 implemented on top of the Instructional API.
@@ -155,6 +230,19 @@ Where `poly1`, `poly2`, and the return value are Polygon objects, in the format 
     [[130,50], [290,150], [290,50]]
   ],
   inverted: false // is this polygon inverted?
+}
+```
+
+Bezier cubic curves are represented as a series of 6 numbers, in the order `cp1x`, `cp1y`, `cp2x`,
+`cp2y`, `x`, `y`, but support for curves is still experimental and unstable.
+
+```typescript
+// polygon with bezier curve
+{
+  regions: [
+    [[450,150], [200,150,200,60,450,60]]
+  ],
+  inverted: false
 }
 ```
 

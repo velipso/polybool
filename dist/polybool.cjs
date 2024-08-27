@@ -1967,13 +1967,17 @@ class PolyBool {
         const shape = this.shape();
         for (const region of poly.regions) {
             shape.beginPath();
-            for (let i = 0; i < region.length; i++) {
-                const [x, y] = region[i];
-                if (i === 0) {
-                    shape.moveTo(x, y);
+            const lastPoint = region[region.length - 1];
+            shape.moveTo(lastPoint[lastPoint.length - 2], lastPoint[lastPoint.length - 1]);
+            for (const p of region) {
+                if (p.length === 2) {
+                    shape.lineTo(p[0], p[1]);
+                }
+                else if (p.length === 6) {
+                    shape.bezierCurveTo(p[0], p[1], p[2], p[3], p[4], p[5]);
                 }
                 else {
-                    shape.lineTo(x, y);
+                    throw new Error("PolyBool: Invalid point in region");
                 }
             }
             shape.closePath();
@@ -2051,8 +2055,8 @@ class PolyBool {
             lineTo: (x, y) => {
                 regions[regions.length - 1].push([x, y]);
             },
-            bezierCurveTo: () => {
-                throw new Error("PolyBool: polybool.polygon() does not support bezier curves");
+            bezierCurveTo: (c1x, c1y, c2x, c2y, x, y) => {
+                regions[regions.length - 1].push([c1x, c1y, c2x, c2y, x, y]);
             },
             closePath: () => { },
         };

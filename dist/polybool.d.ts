@@ -1,4 +1,5 @@
 type Vec2 = [number, number];
+type Vec6 = [number, number, number, number, number, number];
 declare abstract class Geometry {
     abstract snap0(v: number): number;
     abstract snap01(v: number): number;
@@ -251,7 +252,7 @@ declare class ShapeCombined {
 }
 
 interface Polygon {
-    regions: Vec2[][];
+    regions: Array<Array<Vec2 | Vec6>>;
     inverted: boolean;
 }
 interface Segments {
@@ -288,4 +289,4 @@ declare class PolyBool {
 }
 declare const polybool: PolyBool;
 
-export { BuildLog, type CombinedSegments, Geometry, GeometryEpsilon, type IPolyBoolReceiver, Intersecter, PolyBool, type Polygon, type Segment, SegmentBase, type SegmentBool, SegmentChainer, SegmentCurve, type SegmentDrawCtx, SegmentLine, SegmentSelector, type SegmentTRangePairs, type SegmentTValuePairs, SegmentTValuePairsBuilder, SegmentTValuesBuilder, type Segments, Shape, ShapeCombined, type Vec2, polybool as default, projectPointOntoSegmentLine, segmentCurveIntersectSegmentCurve, segmentLineIntersectSegmentCurve, segmentLineIntersectSegmentLine, segmentsIntersect };
+export { BuildLog, type CombinedSegments, Geometry, GeometryEpsilon, type IPolyBoolReceiver, Intersecter, PolyBool, type Polygon, type Segment, SegmentBase, type SegmentBool, SegmentChainer, SegmentCurve, type SegmentDrawCtx, SegmentLine, SegmentSelector, type SegmentTRangePairs, type SegmentTValuePairs, SegmentTValuePairsBuilder, SegmentTValuesBuilder, type Segments, Shape, ShapeCombined, type Vec2, type Vec6, polybool as default, projectPointOntoSegmentLine, segmentCurveIntersectSegmentCurve, segmentLineIntersectSegmentCurve, segmentLineIntersectSegmentLine, segmentsIntersect };

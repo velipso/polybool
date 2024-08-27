@@ -25,6 +25,24 @@ const triangle2 = {
   inverted: false
 };
 
+const box1 = {
+  regions: [[
+    [0, 0],
+    [5, 0],
+    [5, -5],
+    [0, -5]
+  ]],
+  inverted: false
+};
+
+const curve1 = {
+  regions: [[
+    [0, 0],
+    [0, -5, 10, -5, 10, 0]
+  ]],
+  inverted: false
+};
+
 const tests: { name: string, func(): void }[] = [
   {
     name: 'basic intersection',
@@ -54,6 +72,24 @@ const tests: { name: string, func(): void }[] = [
             [5, 10],
             [0, 0],
             [15, 0]
+          ]],
+          inverted: false
+        }
+      );
+    }
+  },
+  {
+    name: 'union with curve',
+    func: () => {
+      assertEqual(
+        polybool.union(box1, curve1),
+        {
+          regions: [[
+            [10, 0],
+            [10, -2.5, 7.5, -3.75, 5, -3.75],
+            [5, -5],
+            [0, -5],
+            [0, 0]
           ]],
           inverted: false
         }

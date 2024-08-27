@@ -67,12 +67,26 @@ var polyCases = [{
   }
 }, {
   name: 'Curved Shapes 1',
+  poly1: {
+    regions: [
+      [ [450,150],[200,150,200,60,450,60] ]
+    ],
+    inverted: false
+  },
+  poly2: {
+    regions: [
+      [ [500,150],[380,150,380,60,500,60] ]
+    ],
+    inverted: false
+  },
+  /*
   shape1: [
     [ [450,150],[200,150,200,60,450,60] ]
   ],
   shape2: [
     [ [500,150],[380,150,380,60,500,60] ]
   ]
+  */
 }, {
   name: 'Curved Shapes 2',
   shape1: [
@@ -619,15 +633,17 @@ function unscaleY(y){
 }
 
 function drawRegions(regions, offset){
+  const mapPt = (p, j) => (j % 2) ? scaleY(p) + offset : scaleX(p);
   for (const region of regions) {
+    const lastPt = region[region.length - 1].map(mapPt);
+    ctx.moveTo(
+      lastPt[lastPt.length - 2],
+      lastPt[lastPt.length - 1]
+    );
     for (let i = 0; i < region.length; i++) {
-      const pt = region[i].map((p, j) => (j % 2) ? scaleY(p) + offset : scaleX(p));
+      const pt = region[i].map(mapPt);
       if (pt.length === 2) {
-        if (i === 0) {
-          ctx.moveTo(pt[0], pt[1]);
-        } else {
-          ctx.lineTo(pt[0], pt[1]);
-        }
+        ctx.lineTo(pt[0], pt[1]);
       } else {
         ctx.bezierCurveTo(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5]);
       }

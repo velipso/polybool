@@ -6,6 +6,7 @@
 //
 
 export type Vec2 = [number, number];
+export type Vec6 = [number, number, number, number, number, number];
 
 export function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
