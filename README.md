@@ -99,7 +99,7 @@ const poly2 = {
 };
 
 const segs1 = polybool.segments(poly1);
-cosnt segs2 = polybool.segments(poly2);
+const segs2 = polybool.segments(poly2);
 const combined = polybool.combine(segs1, segs2);
 const segs3 = polybool.selectIntersect(combined);
 const result = polybool.polygon(segs3);
