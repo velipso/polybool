@@ -30,6 +30,66 @@ export interface IPolyBoolReceiver {
   closePath: () => void;
 }
 
+function joinLines(
+  seg1: SegmentLine,
+  seg2: SegmentLine,
+  geo: Geometry,
+): SegmentLine | false {
+  if (geo.isCollinear(seg1.p0, seg1.p1, seg2.p1)) {
+    return new SegmentLine(seg1.p0, seg2.p1, geo);
+  }
+  return false;
+}
+
+function joinCurves(
+  seg1: SegmentCurve,
+  seg2: SegmentCurve,
+  geo: Geometry,
+): SegmentCurve | false {
+  if (geo.isCollinear(seg1.p2, seg1.p3, seg2.p1)) {
+    const dx = seg2.p1[0] - seg1.p2[0];
+    const dy = seg2.p1[1] - seg1.p2[1];
+    const t =
+      Math.abs(dx) > Math.abs(dy)
+        ? (seg1.p3[0] - seg1.p2[0]) / dx
+        : (seg1.p3[1] - seg1.p2[1]) / dy;
+    const ts = geo.snap01(t);
+    if (ts !== 0 && ts !== 1) {
+      return new SegmentCurve(
+        seg1.p0,
+        [
+          seg1.p0[0] + (seg1.p1[0] - seg1.p0[0]) / t,
+          seg1.p0[1] + (seg1.p1[1] - seg1.p0[1]) / t,
+        ],
+        [
+          seg2.p2[0] - (t * (seg2.p3[0] - seg2.p2[0])) / (1 - t),
+          seg2.p2[1] - (t * (seg2.p3[1] - seg2.p2[1])) / (1 - t),
+        ],
+        seg2.p3,
+        geo,
+      );
+    }
+  }
+  return false;
+}
+
+function joinSegments(
+  seg1: Segment | undefined,
+  seg2: Segment | undefined,
+  geo: Geometry,
+): Segment | false {
+  if (seg1 === seg2) {
+    return false;
+  }
+  if (seg1 instanceof SegmentLine && seg2 instanceof SegmentLine) {
+    return joinLines(seg1, seg2, geo);
+  }
+  if (seg1 instanceof SegmentCurve && seg2 instanceof SegmentCurve) {
+    return joinCurves(seg1, seg2, geo);
+  }
+  return false;
+}
+
 export default function SegmentChainer<T extends IPolyBoolReceiver>(
   segments: SegmentBool[],
   receiver: T,
@@ -139,29 +199,21 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
       }
 
       // simplify chain
-      if (seg instanceof SegmentLine) {
-        if (firstMatch.matchesHead) {
-          const next = chain[1];
-          if (
-            next &&
-            next instanceof SegmentLine &&
-            geo.isCollinear(seg.p0, next.p0, next.p1)
-          ) {
-            next.setStart(seg.p0);
-            log?.chainSimplifyHead(index, next);
-            chain.shift();
-          }
-        } else {
-          const next = chain[chain.length - 2];
-          if (
-            next &&
-            next instanceof SegmentLine &&
-            geo.isCollinear(next.p0, next.p1, seg.p1)
-          ) {
-            next.setEnd(seg.p1);
-            log?.chainSimplifyTail(index, next);
-            chain.pop();
-          }
+      if (firstMatch.matchesHead) {
+        const next = chain[1];
+        const newSeg = joinSegments(seg, next, geo);
+        if (newSeg) {
+          log?.chainSimplifyHead(index, newSeg);
+          chain.shift();
+          chain[0] = newSeg;
+        }
+      } else {
+        const next = chain[chain.length - 2];
+        const newSeg = joinSegments(next, seg, geo);
+        if (newSeg) {
+          log?.chainSimplifyTail(index, newSeg);
+          chain.pop();
+          chain[chain.length - 1] = newSeg;
         }
       }
 
@@ -169,16 +221,11 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
       const segS = chain[0];
       const segE = chain[chain.length - 1];
       if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
-        if (
-          segS !== segE &&
-          segS instanceof SegmentLine &&
-          segE instanceof SegmentLine &&
-          geo.isCollinear(segS.p1, segS.p0, segE.p0)
-        ) {
-          // closing the chain caused two collinear lines to join, so merge them
-          segS.setStart(segE.p0);
-          log?.chainSimplifyClose(index, segS);
+        const newStart = joinSegments(segE, segS, geo);
+        if (newStart) {
+          log?.chainSimplifyClose(index, newStart);
           chain.pop();
+          chain[0] = newStart;
         }
 
         // we have a closed chain!
@@ -208,30 +255,22 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         chain1.push(seg);
 
         // simplify chain1's tail
-        if (seg instanceof SegmentLine) {
-          const next = chain1[chain1.length - 2];
-          if (
-            next &&
-            next instanceof SegmentLine &&
-            geo.isCollinear(next.p0, next.p1, seg.p1)
-          ) {
-            next.setEnd(seg.p1);
-            log?.chainSimplifyTail(index1, next);
-            chain1.pop();
-          }
+        const next = chain1[chain1.length - 2];
+        const newEnd = joinSegments(next, seg, geo);
+        if (newEnd) {
+          log?.chainSimplifyTail(index1, newEnd);
+          chain1.pop();
+          chain1[chain1.length - 1] = newEnd;
         }
 
         // simplify chain2's head
         const tail = chain1[chain1.length - 1];
         const head = chain2[0];
-        if (
-          tail instanceof SegmentLine &&
-          head instanceof SegmentLine &&
-          geo.isCollinear(tail.p0, head.p0, head.p1)
-        ) {
-          tail.setEnd(head.p1);
-          log?.chainSimplifyJoin(index1, index2, tail);
+        const newJoin = joinSegments(tail, head, geo);
+        if (newJoin) {
+          log?.chainSimplifyJoin(index1, index2, newJoin);
           chain2.shift();
+          chain1[chain1.length - 1] = newJoin;
         }
 
         log?.chainJoin(index1, index2);

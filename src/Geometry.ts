@@ -90,74 +90,63 @@ export class GeometryEpsilon extends Geometry {
     return Math.abs(dx1 * dy2 - dx2 * dy1) < this.epsilon;
   }
 
-  solveCubic(a: number, b: number, c: number, d: number) {
-    const b2 = 2 * b;
-    const asq = a * a;
-    const acb = asq * a;
+  private solveCubicNormalized(a: number, b: number, c: number) {
+    // based somewhat on gsl_poly_solve_cubic from GNU Scientific Library
+    const a3 = a / 3;
+    const b3 = b / 3;
+    const Q = a3 * a3 - b3;
+    const R = a3 * (a3 * a3 - b / 2) + c / 2;
+    if (Math.abs(R) < this.epsilon && Math.abs(Q) < this.epsilon) {
+      return [-a3];
+    }
+    const F =
+      a3 * (a3 * (4 * a3 * c - b3 * b) - 2 * b * c) + 4 * b3 * b3 * b3 + c * c;
+    if (Math.abs(F) < this.epsilon) {
+      const sqrtQ = Math.sqrt(Q);
+      const x0 = -2 * sqrtQ - a3;
+      const x1 = sqrtQ - a3;
+      return [x0, x1].sort((x, y) => x - y);
+    }
+    const Q3 = Q * Q * Q;
+    const R2 = R * R;
+    if (R2 < Q3) {
+      const ratio = (R < 0 ? -1 : 1) * Math.sqrt(R2 / Q3);
+      const theta = Math.acos(ratio);
+      const norm = -2 * Math.sqrt(Q);
+      const x0 = norm * Math.cos(theta / 3) - a3;
+      const x1 = norm * Math.cos((theta + 2 * Math.PI) / 3) - a3;
+      const x2 = norm * Math.cos((theta - 2 * Math.PI) / 3) - a3;
+      return [x0, x1, x2].sort((x, y) => x - y);
+    } else {
+      const A =
+        (R < 0 ? 1 : -1) * Math.pow(Math.abs(R) + Math.sqrt(R2 - Q3), 1 / 3);
+      const B = Math.abs(A) >= this.epsilon ? Q / A : 0;
+      return [A + B - a3];
+    }
+  }
 
-    if (Math.abs(acb) < this.epsilon) {
+  solveCubic(a: number, b: number, c: number, d: number) {
+    if (Math.abs(a) < this.epsilon) {
       // quadratic
       if (Math.abs(b) < this.epsilon) {
-        // linear
+        // linear case
         if (Math.abs(c) < this.epsilon) {
           // horizontal line
-          if (Math.abs(d) < this.epsilon) {
-            // horizontal line at 0
-            return [0];
-          }
-          return [];
+          return Math.abs(d) < this.epsilon ? [0] : [];
         }
         return [-d / c];
       }
+      const b2 = 2 * b;
       let D = c * c - 4 * b * d;
       if (Math.abs(D) < this.epsilon) {
         return [-c / b2];
       } else if (D > 0) {
         D = Math.sqrt(D);
-        return b2 < 0
-          ? [(-c + D) / b2, (-c - D) / b2]
-          : [(-c - D) / b2, (-c + D) / b2];
+        return [(-c + D) / b2, (-c - D) / b2].sort((x, y) => x - y);
       }
       return [];
     }
-
-    // convert to depressed cubic
-    const bsq = b * b;
-    let p = (3 * a * c - bsq) / (3 * asq);
-    const q = (bsq * b2 - 9 * a * b * c + 27 * asq * d) / (27 * acb);
-    const revert = -b / (3 * a);
-
-    if (Math.abs(p) < this.epsilon) {
-      return [revert + Math.cbrt(-q)];
-    }
-    if (Math.abs(q) < this.epsilon) {
-      if (p < 0) {
-        p = Math.sqrt(-p);
-        return [revert - p, revert, revert + p];
-      }
-      return [revert];
-    }
-
-    const D = (q * q) / 4 + (p * p * p) / 27;
-    if (Math.abs(D) < this.epsilon) {
-      const qop = q / p;
-      return qop < 0
-        ? [revert + 3 * qop, revert - 1.5 * qop]
-        : [revert - 1.5 * qop, revert + 3 * qop];
-    }
-    if (D > 0) {
-      const u = Math.cbrt(-q / 2 - Math.sqrt(D));
-      return [revert + u - p / (3 * u)];
-    }
-
-    const u = 2 * Math.sqrt(-p / 3);
-    const t = Math.acos((3 * q) / p / u) / 3;
-    const k = (2 * Math.PI) / 3;
-    return [
-      revert + u * Math.cos(t - 2 * k),
-      revert + u * Math.cos(t - k),
-      revert + u * Math.cos(t),
-    ];
+    return this.solveCubicNormalized(b / a, c / a, d / a);
   }
 
   isEqualVec2(a: Vec2, b: Vec2) {

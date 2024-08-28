@@ -16,6 +16,7 @@ declare class GeometryEpsilon extends Geometry {
     snap01(v: number): number;
     atan2deg(dy: number, dx: number): number;
     isCollinear(p1: Vec2, p2: Vec2, p3: Vec2): boolean;
+    private solveCubicNormalized;
     solveCubic(a: number, b: number, c: number, d: number): number[];
     isEqualVec2(a: Vec2, b: Vec2): boolean;
     compareVec2(a: Vec2, b: Vec2): 0 | 1 | -1;
@@ -53,6 +54,7 @@ declare class SegmentTValuePairsBuilder {
     done(): SegmentTValuePairs | null;
 }
 declare abstract class SegmentBase<T> {
+    abstract copy(): T;
     abstract start(): Vec2;
     abstract start2(): Vec2;
     abstract end(): Vec2;
@@ -72,6 +74,7 @@ declare class SegmentLine extends SegmentBase<SegmentLine> {
     p1: Vec2;
     geo: Geometry;
     constructor(p0: Vec2, p1: Vec2, geo: Geometry);
+    copy(): SegmentLine;
     start(): Vec2;
     start2(): Vec2;
     end(): Vec2;
@@ -93,6 +96,7 @@ declare class SegmentCurve extends SegmentBase<SegmentCurve> {
     p3: Vec2;
     geo: Geometry;
     constructor(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, geo: Geometry);
+    copy(): SegmentCurve;
     start(): Vec2;
     start2(): Vec2;
     end(): Vec2;
@@ -107,7 +111,7 @@ declare class SegmentCurve extends SegmentBase<SegmentCurve> {
     boundingTValues(): number[];
     inflectionTValues(): number[];
     boundingBox(): [Vec2, Vec2];
-    mapXtoY(x: number): number | false;
+    mapXtoY(x: number, force?: boolean): number | false;
     pointOn(p: Vec2): boolean;
     toLine(): SegmentLine | null;
     draw(ctx: SegmentDrawCtx): void;

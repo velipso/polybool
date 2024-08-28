@@ -119,6 +119,7 @@ export class SegmentTValuePairsBuilder {
 }
 
 export abstract class SegmentBase<T> {
+  abstract copy(): T;
   abstract start(): Vec2;
   abstract start2(): Vec2;
   abstract end(): Vec2;
@@ -144,6 +145,10 @@ export class SegmentLine extends SegmentBase<SegmentLine> {
     this.p0 = p0;
     this.p1 = p1;
     this.geo = geo;
+  }
+
+  copy() {
+    return new SegmentLine(this.p0, this.p1, this.geo);
   }
 
   start() {
@@ -245,6 +250,10 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
     this.p2 = p2;
     this.p3 = p3;
     this.geo = geo;
+  }
+
+  copy() {
+    return new SegmentCurve(this.p0, this.p1, this.p2, this.p3, this.geo);
   }
 
   start() {
@@ -431,7 +440,7 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
     return [min, max];
   }
 
-  mapXtoY(x: number): number | false {
+  mapXtoY(x: number, force = false): number | false {
     if (this.geo.snap0(this.p0[0] - x) === 0) {
       return this.p0[1];
     }
@@ -446,11 +455,23 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
     const B = 3 * p2 - 6 * p1 + 3 * p0;
     const C = 3 * p1 - 3 * p0;
     const D = p0;
-    const tv = this.geo.solveCubic(A, B, C, D);
-    for (const t of tv) {
+    for (const t of this.geo.solveCubic(A, B, C, D)) {
       const ts = this.geo.snap01(t);
       if (ts >= 0 && ts <= 1) {
         return this.point(t)[1];
+      }
+    }
+    if (force) {
+      // TODO: what?!?! lol this is so wrong
+      for (const t of [
+        ...this.geo.solveCubic(0, B, C, D),
+        ...this.geo.solveCubic(0, 0, C, D),
+        0,
+      ]) {
+        const ts = this.geo.snap01(t);
+        if (ts >= 0 && ts <= 1) {
+          return this.point(t)[1];
+        }
       }
     }
     return false;

@@ -79,14 +79,6 @@ var polyCases = [{
     ],
     inverted: false
   },
-  /*
-  shape1: [
-    [ [450,150],[200,150,200,60,450,60] ]
-  ],
-  shape2: [
-    [ [500,150],[380,150,380,60,500,60] ]
-  ]
-  */
 }, {
   name: 'Curved Shapes 2',
   shape1: [
@@ -128,16 +120,27 @@ var polyCases = [{
     [ [500,150],[380,150,380,60,500,60] ]
   ]
 }, {
-  // this one fails due to numerical instability... it will detect an intersection between line
-  // and curve at an endpoint, but see it as 0.999999 instead of 1, which causes an event to be
-  // divided, and a zero-length segment
-  name: 'Curved Shapes 7 (FAIL)',
+  name: 'Curved Shapes 7',
   shape1: [
     [ [450,120],[200,150,200,60,450,60] ]
   ],
   shape2: [
     [ [500,150],[380,150,380,60,500,60] ]
   ]
+}, {
+  name: 'Curved Shapes 8 (FAIL)',
+  poly1: {
+    regions: [
+      [ [450,150],[200,150,200,60,450,60] ]
+    ],
+    inverted: false
+  },
+  poly2: {
+    regions: [
+      [ [500,150],[380,150,380,60,380,60] ]
+    ],
+    inverted: false
+  },
 }, {
   name: 'Curve + Line 1',
   shape1: [
@@ -952,13 +955,13 @@ function redraw(){
         bl_chains[bl.index][0] = bl.seg;
         break;
       case 'chain_simp_tail':
-        bl_chains[bl.index][bl_chains[bl.index].length - 1].pop();
+        bl_chains[bl.index].pop();
         bl_chains[bl.index][bl_chains[bl.index].length - 1] = bl.seg;
         break;
       case 'chain_simp_close':
         bl_chains[bl.index].pop();
         bl_chains[bl.index].shift();
-        bl_chains[bl.index].push(bl.seg);
+        bl_chains[bl.index].unshift(bl.seg);
         break;
       case 'chain_simp_join':
         bl_chains[bl.index1].pop();

@@ -354,7 +354,7 @@ export class Intersecter {
     } else {
       if (seg2 instanceof SegmentCurve) {
         // find seg2's position at A[0] and see if it's above or below A[1]
-        const y = seg2.mapXtoY(A[0]);
+        const y = seg2.mapXtoY(A[0], true);
         if (y !== false) {
           return Math.sign(y - A[1]);
         }

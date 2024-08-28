@@ -66,70 +66,62 @@ class GeometryEpsilon extends Geometry {
         const dy2 = p2[1] - p3[1];
         return Math.abs(dx1 * dy2 - dx2 * dy1) < this.epsilon;
     }
+    solveCubicNormalized(a, b, c) {
+        // based somewhat on gsl_poly_solve_cubic from GNU Scientific Library
+        const a3 = a / 3;
+        const b3 = b / 3;
+        const Q = a3 * a3 - b3;
+        const R = a3 * (a3 * a3 - b / 2) + c / 2;
+        if (Math.abs(R) < this.epsilon && Math.abs(Q) < this.epsilon) {
+            return [-a3];
+        }
+        const F = a3 * (a3 * (4 * a3 * c - b3 * b) - 2 * b * c) + 4 * b3 * b3 * b3 + c * c;
+        if (Math.abs(F) < this.epsilon) {
+            const sqrtQ = Math.sqrt(Q);
+            const x0 = -2 * sqrtQ - a3;
+            const x1 = sqrtQ - a3;
+            return [x0, x1].sort((x, y) => x - y);
+        }
+        const Q3 = Q * Q * Q;
+        const R2 = R * R;
+        if (R2 < Q3) {
+            const ratio = (R < 0 ? -1 : 1) * Math.sqrt(R2 / Q3);
+            const theta = Math.acos(ratio);
+            const norm = -2 * Math.sqrt(Q);
+            const x0 = norm * Math.cos(theta / 3) - a3;
+            const x1 = norm * Math.cos((theta + 2 * Math.PI) / 3) - a3;
+            const x2 = norm * Math.cos((theta - 2 * Math.PI) / 3) - a3;
+            return [x0, x1, x2].sort((x, y) => x - y);
+        }
+        else {
+            const A = (R < 0 ? 1 : -1) * Math.pow(Math.abs(R) + Math.sqrt(R2 - Q3), 1 / 3);
+            const B = Math.abs(A) >= this.epsilon ? Q / A : 0;
+            return [A + B - a3];
+        }
+    }
     solveCubic(a, b, c, d) {
-        const b2 = 2 * b;
-        const asq = a * a;
-        const acb = asq * a;
-        if (Math.abs(acb) < this.epsilon) {
+        if (Math.abs(a) < this.epsilon) {
             // quadratic
             if (Math.abs(b) < this.epsilon) {
-                // linear
+                // linear case
                 if (Math.abs(c) < this.epsilon) {
                     // horizontal line
-                    if (Math.abs(d) < this.epsilon) {
-                        // horizontal line at 0
-                        return [0];
-                    }
-                    return [];
+                    return Math.abs(d) < this.epsilon ? [0] : [];
                 }
                 return [-d / c];
             }
+            const b2 = 2 * b;
             let D = c * c - 4 * b * d;
             if (Math.abs(D) < this.epsilon) {
                 return [-c / b2];
             }
             else if (D > 0) {
                 D = Math.sqrt(D);
-                return b2 < 0
-                    ? [(-c + D) / b2, (-c - D) / b2]
-                    : [(-c - D) / b2, (-c + D) / b2];
+                return [(-c + D) / b2, (-c - D) / b2].sort((x, y) => x - y);
             }
             return [];
         }
-        // convert to depressed cubic
-        const bsq = b * b;
-        let p = (3 * a * c - bsq) / (3 * asq);
-        const q = (bsq * b2 - 9 * a * b * c + 27 * asq * d) / (27 * acb);
-        const revert = -b / (3 * a);
-        if (Math.abs(p) < this.epsilon) {
-            return [revert + Math.cbrt(-q)];
-        }
-        if (Math.abs(q) < this.epsilon) {
-            if (p < 0) {
-                p = Math.sqrt(-p);
-                return [revert - p, revert, revert + p];
-            }
-            return [revert];
-        }
-        const D = (q * q) / 4 + (p * p * p) / 27;
-        if (Math.abs(D) < this.epsilon) {
-            const qop = q / p;
-            return qop < 0
-                ? [revert + 3 * qop, revert - 1.5 * qop]
-                : [revert - 1.5 * qop, revert + 3 * qop];
-        }
-        if (D > 0) {
-            const u = Math.cbrt(-q / 2 - Math.sqrt(D));
-            return [revert + u - p / (3 * u)];
-        }
-        const u = 2 * Math.sqrt(-p / 3);
-        const t = Math.acos((3 * q) / p / u) / 3;
-        const k = (2 * Math.PI) / 3;
-        return [
-            revert + u * Math.cos(t - 2 * k),
-            revert + u * Math.cos(t - k),
-            revert + u * Math.cos(t),
-        ];
+        return this.solveCubicNormalized(b / a, c / a, d / a);
     }
     isEqualVec2(a, b) {
         return (Math.abs(a[0] - b[0]) < this.epsilon &&
@@ -226,6 +218,9 @@ class SegmentLine extends SegmentBase {
         this.p1 = p1;
         this.geo = geo;
     }
+    copy() {
+        return new SegmentLine(this.p0, this.p1, this.geo);
+    }
     start() {
         return this.p0;
     }
@@ -305,6 +300,9 @@ class SegmentCurve extends SegmentBase {
         this.p2 = p2;
         this.p3 = p3;
         this.geo = geo;
+    }
+    copy() {
+        return new SegmentCurve(this.p0, this.p1, this.p2, this.p3, this.geo);
     }
     start() {
         return this.p0;
@@ -470,7 +468,7 @@ class SegmentCurve extends SegmentBase {
         }
         return [min, max];
     }
-    mapXtoY(x) {
+    mapXtoY(x, force = false) {
         if (this.geo.snap0(this.p0[0] - x) === 0) {
             return this.p0[1];
         }
@@ -485,11 +483,23 @@ class SegmentCurve extends SegmentBase {
         const B = 3 * p2 - 6 * p1 + 3 * p0;
         const C = 3 * p1 - 3 * p0;
         const D = p0;
-        const tv = this.geo.solveCubic(A, B, C, D);
-        for (const t of tv) {
+        for (const t of this.geo.solveCubic(A, B, C, D)) {
             const ts = this.geo.snap01(t);
             if (ts >= 0 && ts <= 1) {
                 return this.point(t)[1];
+            }
+        }
+        if (force) {
+            // TODO: what?!?! lol this is so wrong
+            for (const t of [
+                ...this.geo.solveCubic(0, B, C, D),
+                ...this.geo.solveCubic(0, 0, C, D),
+                0,
+            ]) {
+                const ts = this.geo.snap01(t);
+                if (ts >= 0 && ts <= 1) {
+                    return this.point(t)[1];
+                }
             }
         }
         return false;
@@ -975,7 +985,7 @@ class Intersecter {
         else {
             if (seg2 instanceof SegmentCurve) {
                 // find seg2's position at A[0] and see if it's above or below A[1]
-                const y = seg2.mapXtoY(A[0]);
+                const y = seg2.mapXtoY(A[0], true);
                 if (y !== false) {
                     return Math.sign(y - A[1]);
                 }
@@ -1432,6 +1442,44 @@ class SegmentSelector {
 // Project Home: https://github.com/velipso/polybool
 // SPDX-License-Identifier: 0BSD
 //
+function joinLines(seg1, seg2, geo) {
+    if (geo.isCollinear(seg1.p0, seg1.p1, seg2.p1)) {
+        return new SegmentLine(seg1.p0, seg2.p1, geo);
+    }
+    return false;
+}
+function joinCurves(seg1, seg2, geo) {
+    if (geo.isCollinear(seg1.p2, seg1.p3, seg2.p1)) {
+        const dx = seg2.p1[0] - seg1.p2[0];
+        const dy = seg2.p1[1] - seg1.p2[1];
+        const t = Math.abs(dx) > Math.abs(dy)
+            ? (seg1.p3[0] - seg1.p2[0]) / dx
+            : (seg1.p3[1] - seg1.p2[1]) / dy;
+        const ts = geo.snap01(t);
+        if (ts !== 0 && ts !== 1) {
+            return new SegmentCurve(seg1.p0, [
+                seg1.p0[0] + (seg1.p1[0] - seg1.p0[0]) / t,
+                seg1.p0[1] + (seg1.p1[1] - seg1.p0[1]) / t,
+            ], [
+                seg2.p2[0] - (t * (seg2.p3[0] - seg2.p2[0])) / (1 - t),
+                seg2.p2[1] - (t * (seg2.p3[1] - seg2.p2[1])) / (1 - t),
+            ], seg2.p3, geo);
+        }
+    }
+    return false;
+}
+function joinSegments(seg1, seg2, geo) {
+    if (seg1 === seg2) {
+        return false;
+    }
+    if (seg1 instanceof SegmentLine && seg2 instanceof SegmentLine) {
+        return joinLines(seg1, seg2, geo);
+    }
+    if (seg1 instanceof SegmentCurve && seg2 instanceof SegmentCurve) {
+        return joinCurves(seg1, seg2, geo);
+    }
+    return false;
+}
 function SegmentChainer(segments, receiver, geo, log) {
     const chains = [];
     const regions = [];
@@ -1530,40 +1578,33 @@ function SegmentChainer(segments, receiver, geo, log) {
                 }
             }
             // simplify chain
-            if (seg instanceof SegmentLine) {
-                if (firstMatch.matchesHead) {
-                    const next = chain[1];
-                    if (next &&
-                        next instanceof SegmentLine &&
-                        geo.isCollinear(seg.p0, next.p0, next.p1)) {
-                        next.setStart(seg.p0);
-                        log === null || log === void 0 ? void 0 : log.chainSimplifyHead(index, next);
-                        chain.shift();
-                    }
+            if (firstMatch.matchesHead) {
+                const next = chain[1];
+                const newSeg = joinSegments(seg, next, geo);
+                if (newSeg) {
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyHead(index, newSeg);
+                    chain.shift();
+                    chain[0] = newSeg;
                 }
-                else {
-                    const next = chain[chain.length - 2];
-                    if (next &&
-                        next instanceof SegmentLine &&
-                        geo.isCollinear(next.p0, next.p1, seg.p1)) {
-                        next.setEnd(seg.p1);
-                        log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index, next);
-                        chain.pop();
-                    }
+            }
+            else {
+                const next = chain[chain.length - 2];
+                const newSeg = joinSegments(next, seg, geo);
+                if (newSeg) {
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index, newSeg);
+                    chain.pop();
+                    chain[chain.length - 1] = newSeg;
                 }
             }
             // check for closed chain
             const segS = chain[0];
             const segE = chain[chain.length - 1];
             if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
-                if (segS !== segE &&
-                    segS instanceof SegmentLine &&
-                    segE instanceof SegmentLine &&
-                    geo.isCollinear(segS.p1, segS.p0, segE.p0)) {
-                    // closing the chain caused two collinear lines to join, so merge them
-                    segS.setStart(segE.p0);
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyClose(index, segS);
+                const newStart = joinSegments(segE, segS, geo);
+                if (newStart) {
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyClose(index, newStart);
                     chain.pop();
+                    chain[0] = newStart;
                 }
                 // we have a closed chain!
                 log === null || log === void 0 ? void 0 : log.chainClose(index);
@@ -1589,25 +1630,21 @@ function SegmentChainer(segments, receiver, geo, log) {
                 log === null || log === void 0 ? void 0 : log.chainAddTail(index1, seg);
                 chain1.push(seg);
                 // simplify chain1's tail
-                if (seg instanceof SegmentLine) {
-                    const next = chain1[chain1.length - 2];
-                    if (next &&
-                        next instanceof SegmentLine &&
-                        geo.isCollinear(next.p0, next.p1, seg.p1)) {
-                        next.setEnd(seg.p1);
-                        log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index1, next);
-                        chain1.pop();
-                    }
+                const next = chain1[chain1.length - 2];
+                const newEnd = joinSegments(next, seg, geo);
+                if (newEnd) {
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index1, newEnd);
+                    chain1.pop();
+                    chain1[chain1.length - 1] = newEnd;
                 }
                 // simplify chain2's head
                 const tail = chain1[chain1.length - 1];
                 const head = chain2[0];
-                if (tail instanceof SegmentLine &&
-                    head instanceof SegmentLine &&
-                    geo.isCollinear(tail.p0, head.p0, head.p1)) {
-                    tail.setEnd(head.p1);
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyJoin(index1, index2, tail);
+                const newJoin = joinSegments(tail, head, geo);
+                if (newJoin) {
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyJoin(index1, index2, newJoin);
                     chain2.shift();
+                    chain1[chain1.length - 1] = newJoin;
                 }
                 log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2);
                 chains[index1] = chain1.concat(chain2);
