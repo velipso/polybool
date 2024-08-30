@@ -55,6 +55,7 @@ declare class SegmentTValuePairsBuilder {
 }
 declare abstract class SegmentBase<T> {
     abstract copy(): T;
+    abstract isEqual(other: T): boolean;
     abstract start(): Vec2;
     abstract start2(): Vec2;
     abstract end(): Vec2;
@@ -75,6 +76,7 @@ declare class SegmentLine extends SegmentBase<SegmentLine> {
     geo: Geometry;
     constructor(p0: Vec2, p1: Vec2, geo: Geometry);
     copy(): SegmentLine;
+    isEqual(other: SegmentLine): boolean;
     start(): Vec2;
     start2(): Vec2;
     end(): Vec2;
@@ -97,6 +99,7 @@ declare class SegmentCurve extends SegmentBase<SegmentCurve> {
     geo: Geometry;
     constructor(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, geo: Geometry);
     copy(): SegmentCurve;
+    isEqual(other: SegmentCurve): boolean;
     start(): Vec2;
     start2(): Vec2;
     end(): Vec2;
@@ -111,6 +114,7 @@ declare class SegmentCurve extends SegmentBase<SegmentCurve> {
     boundingTValues(): number[];
     inflectionTValues(): number[];
     boundingBox(): [Vec2, Vec2];
+    mapXtoT(x: number, force?: boolean): number | false;
     mapXtoY(x: number, force?: boolean): number | false;
     pointOn(p: Vec2): boolean;
     toLine(): SegmentLine | null;

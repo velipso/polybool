@@ -103,9 +103,9 @@ export class GeometryEpsilon extends Geometry {
       a3 * (a3 * (4 * a3 * c - b3 * b) - 2 * b * c) + 4 * b3 * b3 * b3 + c * c;
     if (Math.abs(F) < this.epsilon) {
       const sqrtQ = Math.sqrt(Q);
-      const x0 = -2 * sqrtQ - a3;
-      const x1 = sqrtQ - a3;
-      return [x0, x1].sort((x, y) => x - y);
+      return R > 0
+        ? [-2 * sqrtQ - a / 3, sqrtQ - a / 3]
+        : [-sqrtQ - a / 3, 2 * sqrtQ - a / 3];
     }
     const Q3 = Q * Q * Q;
     const R2 = R * R;

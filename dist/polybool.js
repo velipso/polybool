@@ -78,9 +78,9 @@ class GeometryEpsilon extends Geometry {
         const F = a3 * (a3 * (4 * a3 * c - b3 * b) - 2 * b * c) + 4 * b3 * b3 * b3 + c * c;
         if (Math.abs(F) < this.epsilon) {
             const sqrtQ = Math.sqrt(Q);
-            const x0 = -2 * sqrtQ - a3;
-            const x1 = sqrtQ - a3;
-            return [x0, x1].sort((x, y) => x - y);
+            return R > 0
+                ? [-2 * sqrtQ - a / 3, sqrtQ - a / 3]
+                : [-sqrtQ - a / 3, 2 * sqrtQ - a / 3];
         }
         const Q3 = Q * Q * Q;
         const R2 = R * R;
@@ -221,6 +221,10 @@ class SegmentLine extends SegmentBase {
     copy() {
         return new SegmentLine(this.p0, this.p1, this.geo);
     }
+    isEqual(other) {
+        return (this.geo.isEqualVec2(this.p0, other.p0) &&
+            this.geo.isEqualVec2(this.p1, other.p1));
+    }
     start() {
         return this.p0;
     }
@@ -303,6 +307,12 @@ class SegmentCurve extends SegmentBase {
     }
     copy() {
         return new SegmentCurve(this.p0, this.p1, this.p2, this.p3, this.geo);
+    }
+    isEqual(other) {
+        return (this.geo.isEqualVec2(this.p0, other.p0) &&
+            this.geo.isEqualVec2(this.p1, other.p1) &&
+            this.geo.isEqualVec2(this.p2, other.p2) &&
+            this.geo.isEqualVec2(this.p3, other.p3));
     }
     start() {
         return this.p0;
@@ -468,41 +478,62 @@ class SegmentCurve extends SegmentBase {
         }
         return [min, max];
     }
-    mapXtoY(x, force = false) {
+    mapXtoT(x, force = false) {
         if (this.geo.snap0(this.p0[0] - x) === 0) {
-            return this.p0[1];
+            return 0;
         }
         if (this.geo.snap0(this.p3[0] - x) === 0) {
-            return this.p3[1];
+            return 1;
         }
         const p0 = this.p0[0] - x;
         const p1 = this.p1[0] - x;
         const p2 = this.p2[0] - x;
         const p3 = this.p3[0] - x;
-        const A = p3 - 3 * p2 + 3 * p1 - p0;
-        const B = 3 * p2 - 6 * p1 + 3 * p0;
-        const C = 3 * p1 - 3 * p0;
-        const D = p0;
-        for (const t of this.geo.solveCubic(A, B, C, D)) {
+        const R = [
+            p3 - 3 * p2 + 3 * p1 - p0,
+            3 * p2 - 6 * p1 + 3 * p0,
+            3 * p1 - 3 * p0,
+            p0,
+        ];
+        for (const t of this.geo.solveCubic(R[0], R[1], R[2], R[3])) {
             const ts = this.geo.snap01(t);
             if (ts >= 0 && ts <= 1) {
-                return this.point(t)[1];
+                return t;
             }
         }
-        if (force) {
-            // TODO: what?!?! lol this is so wrong
-            for (const t of [
-                ...this.geo.solveCubic(0, B, C, D),
-                ...this.geo.solveCubic(0, 0, C, D),
-                0,
-            ]) {
-                const ts = this.geo.snap01(t);
-                if (ts >= 0 && ts <= 1) {
-                    return this.point(t)[1];
+        // force a solution if we know there is one...
+        if (force ||
+            (x >= Math.min(this.p0[0], this.p3[0]) &&
+                x <= Math.max(this.p0[0], this.p3[0]))) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+                // collapse an R value to 0, this is so wrong!!!
+                let ii = -1;
+                for (let i = 0; i < 4; i++) {
+                    if (R[i] !== 0 && (ii < 0 || Math.abs(R[i]) < Math.abs(R[ii]))) {
+                        ii = i;
+                    }
+                }
+                if (ii < 0) {
+                    return 0;
+                }
+                R[ii] = 0;
+                // solve again, but with another 0 to help
+                for (const t of this.geo.solveCubic(R[0], R[1], R[2], R[3])) {
+                    const ts = this.geo.snap01(t);
+                    if (ts >= 0 && ts <= 1) {
+                        return t;
+                    }
                 }
             }
         }
         return false;
+    }
+    mapXtoY(x, force = false) {
+        const t = this.mapXtoT(x, force);
+        if (t === false) {
+            return false;
+        }
+        return this.point(t)[1];
     }
     pointOn(p) {
         if (this.geo.isEqualVec2(this.p0, p) || this.geo.isEqualVec2(this.p3, p)) {
@@ -602,10 +633,31 @@ function segmentLineIntersectSegmentCurve(segA, segB, allowOutOfRange, invert) {
     const a1 = segA.p1;
     const A = a1[1] - a0[1];
     const B = a0[0] - a1[0];
+    if (geo.snap0(B) === 0) {
+        // vertical line
+        const t = segB.mapXtoT(a0[0], false);
+        if (t === false) {
+            return null;
+        }
+        const y = segB.point(t)[1];
+        const s = (y - a0[1]) / A;
+        const result = new SegmentTValuePairsBuilder(allowOutOfRange, geo);
+        if (invert) {
+            result.add(t, s);
+        }
+        else {
+            result.add(s, t);
+        }
+        return result.done();
+    }
     const C = A * a0[0] + B * a0[1];
     const bx = segB.getCubicCoefficients(0);
     const by = segB.getCubicCoefficients(1);
-    const roots = geo.solveCubic(A * bx[0] + B * by[0], A * bx[1] + B * by[1], A * bx[2] + B * by[2], A * bx[3] + B * by[3] - C);
+    const rA = A * bx[0] + B * by[0];
+    const rB = A * bx[1] + B * by[1];
+    const rC = A * bx[2] + B * by[2];
+    const rD = A * bx[3] + B * by[3] - C;
+    const roots = geo.solveCubic(rA, rB, rC, rD);
     const result = new SegmentTValuePairsBuilder(allowOutOfRange, geo);
     if (geo.snap0(A) === 0) {
         // project curve's X component onto line
@@ -1457,13 +1509,18 @@ function joinCurves(seg1, seg2, geo) {
             : (seg1.p3[1] - seg1.p2[1]) / dy;
         const ts = geo.snap01(t);
         if (ts !== 0 && ts !== 1) {
-            return new SegmentCurve(seg1.p0, [
+            const ns = new SegmentCurve(seg1.p0, [
                 seg1.p0[0] + (seg1.p1[0] - seg1.p0[0]) / t,
                 seg1.p0[1] + (seg1.p1[1] - seg1.p0[1]) / t,
             ], [
                 seg2.p2[0] - (t * (seg2.p3[0] - seg2.p2[0])) / (1 - t),
                 seg2.p2[1] - (t * (seg2.p3[1] - seg2.p2[1])) / (1 - t),
             ], seg2.p3, geo);
+            // double check that if we split at T, we get seg1/seg2 back
+            const [left, right] = ns.split([t]);
+            if (left.isEqual(seg1) && right.isEqual(seg2)) {
+                return ns;
+            }
         }
     }
     return false;

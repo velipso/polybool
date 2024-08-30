@@ -55,7 +55,7 @@ function joinCurves(
         : (seg1.p3[1] - seg1.p2[1]) / dy;
     const ts = geo.snap01(t);
     if (ts !== 0 && ts !== 1) {
-      return new SegmentCurve(
+      const ns = new SegmentCurve(
         seg1.p0,
         [
           seg1.p0[0] + (seg1.p1[0] - seg1.p0[0]) / t,
@@ -68,6 +68,11 @@ function joinCurves(
         seg2.p3,
         geo,
       );
+      // double check that if we split at T, we get seg1/seg2 back
+      const [left, right] = ns.split([t]);
+      if (left.isEqual(seg1) && right.isEqual(seg2)) {
+        return ns;
+      }
     }
   }
   return false;

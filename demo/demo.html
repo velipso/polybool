@@ -128,7 +128,7 @@ var polyCases = [{
     [ [500,150],[380,150,380,60,500,60] ]
   ]
 }, {
-  name: 'Curved Shapes 8 (FAIL)',
+  name: 'Curved Shapes 8',
   poly1: {
     regions: [
       [ [450,150],[200,150,200,60,450,60] ]
@@ -138,6 +138,34 @@ var polyCases = [{
   poly2: {
     regions: [
       [ [500,150],[380,150,380,60,380,60] ]
+    ],
+    inverted: false
+  },
+}, {
+  name: 'Curved Shapes 9',
+  poly1: {
+    regions: [
+      [ [290,150],[200,150,200,60,270,60] ]
+    ],
+    inverted: false
+  },
+  poly2: {
+    regions: [
+      [ [290,150],[380,150,380,60,290,60] ]
+    ],
+    inverted: false
+  },
+}, {
+  name: 'Curved Shapes 10',
+  poly1: {
+    regions: [
+      [ [450,150],[200,150,200,60,450,60] ]
+    ],
+    inverted: false
+  },
+  poly2: {
+    regions: [
+      [ [510,140],[380,150,290,130,240,20] ]
     ],
     inverted: false
   },
@@ -428,28 +456,33 @@ function colToHex(color){
   return '#' + hex(color[0]) + hex(color[1]) + hex(color[2]);
 }
 
-function vertRadius(region, vert){
+function vertRadius(region, vert, j){
   if (vert === false)
     return 0;
-  if (hover !== false && hover.region === region && hover.vert === vert)
+  if (hover !== false && hover.region === region && hover.vert === vert && hover.j === j)
     return 6;
   return 3;
 }
 
 function drawVerts(poly, offset){
+  ctx.save();
   poly.regions.forEach(function(region){
     for (var i = 0; i < region.length; i++){
       const p = region[i];
-      ctx.beginPath();
-      ctx.arc(
-        scaleX(p[p.length - 2]),
-        scaleY(p[p.length - 1]) + offset,
-        vertRadius(region, i),
-        0, Math.PI * 2
-      );
-      ctx.fill();
+      for (let j = 0; j < p.length; j += 2) {
+        ctx.beginPath();
+        ctx.arc(
+          scaleX(p[j]),
+          scaleY(p[j + 1]) + offset,
+          vertRadius(region, i, j),
+          0, Math.PI * 2
+        );
+        ctx.globalAlpha = j < p.length - 2 ? 0.25 : 1;
+        ctx.fill();
+      }
     }
   });
+  ctx.restore();
 }
 
 var buildLogMax = 0;
@@ -659,6 +692,28 @@ function polyStroke(result, offset){
   ctx.beginPath();
   drawRegions(result.regions, offset);
   ctx.stroke();
+  ctx.beginPath();
+  // draw control segments
+  for (const region of result.regions) {
+    const lastPt = region[region.length - 1];
+    ctx.moveTo(
+      scaleX(lastPt[lastPt.length - 2]),
+      scaleY(lastPt[lastPt.length - 1]) + offset
+    );
+    for (const p of region) {
+      if (p.length === 6) {
+        ctx.lineTo(scaleX(p[0]), scaleY(p[1]) + offset);
+        ctx.moveTo(scaleX(p[2]), scaleY(p[3]) + offset);
+        ctx.lineTo(scaleX(p[4]), scaleY(p[5]) + offset);
+      } else {
+        ctx.moveTo(scaleX(p[0]), scaleY(p[1]) + offset);
+      }
+    }
+  }
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function polyFill(result, rect1, rect2, offset){
@@ -1449,22 +1504,27 @@ function init(){
     var reg = false;
     var vert = false;
     var len2 = false;
+    var j = false;
     regions.forEach(function(region){
       for (var i = 0; i < region.length; i++){
         const pt = region[i];
-        var dx = scaleX(pt[pt.length - 2] - x);
-        var dy = scaleY(pt[pt.length - 1] - y);
-        var thisLen2 = dx * dx + dy * dy;
-        if (len2 === false || thisLen2 < len2){
-          reg = region;
-          vert = i;
-          len2 = thisLen2;
+        for (var jj = 0; jj < pt.length; jj += 2) {
+          var dx = scaleX(pt[jj] - x);
+          var dy = scaleY(pt[jj + 1] - y);
+          var thisLen2 = dx * dx + dy * dy;
+          if (len2 === false || thisLen2 < len2){
+            reg = region;
+            vert = i;
+            j = jj;
+            len2 = thisLen2;
+          }
         }
       }
     });
     return {
       region: reg,
       vert: vert,
+      j: j,
       len: Math.sqrt(len2)
     };
   }
@@ -1483,14 +1543,19 @@ function init(){
     var p2 = closestPoint(regions2, mp[0], mp[1] - cnvHeight / 2);
     if (p2.len < p1.len)
       p1 = p2;
-    if (p1.len > 10){
-      if (hover !== false){
+    if (p1.len > 10) {
+      if (hover !== false) {
         hover = false;
         redraw();
       }
       return;
     }
-    if (hover === false || hover.region !== p1.region || hover.vert !== p1.vert){
+    if (
+      hover === false ||
+      hover.region !== p1.region ||
+      hover.vert !== p1.vert ||
+      hover.j !== p1.j
+    ) {
       hover = p1;
       redraw();
     }
@@ -1504,8 +1569,8 @@ function init(){
       var dx = mp[0] - dragging[0];
       var dy = mp[1] - dragging[1];
       var pt = hover.region[hover.vert];
-      const ix = pt.length - 2;
-      const iy = pt.length - 1;
+      const ix = hover.j;
+      const iy = hover.j + 1;
       if (pt[iy] + dy < 0)
         dy = -pt[iy];
       if (document.getElementById('snap').checked){
@@ -1530,8 +1595,8 @@ function init(){
       ctx.save();
       var mx = mp[0], my = mp[1] - cnvHeight / 2;
       if (hover !== false){
-        mx = hover.region[hover.vert][0];
-        my = hover.region[hover.vert][1];
+        mx = hover.region[hover.vert][hover.j];
+        my = hover.region[hover.vert][hover.j + 1];
       }
       ctx.setTransform(rscale, 0, 0, rscale, 0, 0);
       ctx.fillStyle = '#fff';
