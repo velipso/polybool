@@ -17,7 +17,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Resources
 
-* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.3/demo/demo.html)
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.4/demo/demo.html)
 * [Companion Tutorial](https://sean.fun/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
