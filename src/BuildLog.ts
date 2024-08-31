@@ -84,56 +84,61 @@ export default class BuildLog {
     this.push("selected", { segs });
   }
 
-  chainStart(seg: Segment) {
-    this.push("chain_start", { seg });
+  chainStart(seg: Segment, closed: boolean) {
+    this.push("chain_start", { seg, closed });
   }
 
-  chainNew(seg: Segment) {
-    this.push("chain_new", { seg });
+  chainNew(seg: Segment, closed: boolean) {
+    this.push("chain_new", { seg, closed });
   }
 
-  chainMatch(index: number) {
-    this.push("chain_match", { index });
+  chainMatch(index: number, closed: boolean) {
+    this.push("chain_match", { index, closed });
   }
 
-  chainClose(index: number) {
-    this.push("chain_close", { index });
+  chainClose(index: number, closed: boolean) {
+    this.push("chain_close", { index, closed });
   }
 
-  chainAddHead(index: number, seg: Segment) {
-    this.push("chain_add_head", { index, seg });
+  chainAddHead(index: number, seg: Segment, closed: boolean) {
+    this.push("chain_add_head", { index, seg, closed });
   }
 
-  chainAddTail(index: number, seg: Segment) {
-    this.push("chain_add_tail", { index, seg });
+  chainAddTail(index: number, seg: Segment, closed: boolean) {
+    this.push("chain_add_tail", { index, seg, closed });
   }
 
-  chainSimplifyHead(index: number, seg: Segment) {
-    this.push("chain_simp_head", { index, seg });
+  chainSimplifyHead(index: number, seg: Segment, closed: boolean) {
+    this.push("chain_simp_head", { index, seg, closed });
   }
 
-  chainSimplifyTail(index: number, seg: Segment) {
-    this.push("chain_simp_tail", { index, seg });
+  chainSimplifyTail(index: number, seg: Segment, closed: boolean) {
+    this.push("chain_simp_tail", { index, seg, closed });
   }
 
-  chainSimplifyClose(index: number, seg: Segment) {
-    this.push("chain_simp_close", { index, seg });
+  chainSimplifyClose(index: number, seg: Segment, closed: boolean) {
+    this.push("chain_simp_close", { index, seg, closed });
   }
 
-  chainSimplifyJoin(index1: number, index2: number, seg: Segment) {
-    this.push("chain_simp_join", { index1, index2, seg });
+  chainSimplifyJoin(
+    index1: number,
+    index2: number,
+    seg: Segment,
+    closed: boolean,
+  ) {
+    this.push("chain_simp_join", { index1, index2, seg, closed });
   }
 
-  chainConnect(index1: number, index2: number) {
-    this.push("chain_con", { index1, index2 });
+  chainConnect(index1: number, index2: number, closed: boolean) {
+    this.push("chain_con", { index1, index2, closed });
   }
 
-  chainReverse(index: number) {
-    this.push("chain_rev", { index });
+  chainReverse(index: number, closed: boolean) {
+    this.push("chain_rev", { index, closed });
   }
 
-  chainJoin(index1: number, index2: number) {
-    this.push("chain_join", { index1, index2 });
+  chainJoin(index1: number, index2: number, closed: boolean) {
+    this.push("chain_join", { index1, index2, closed });
   }
 
   done() {

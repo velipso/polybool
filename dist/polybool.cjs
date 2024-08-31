@@ -44,21 +44,6 @@ class GeometryEpsilon extends Geometry {
         }
         return v;
     }
-    atan2deg(dy, dx) {
-        if (Math.abs(dy) < this.epsilon) {
-            return dx > 0 || Math.abs(dx) < this.epsilon ? 0 : 180;
-        }
-        else if (Math.abs(dx) < this.epsilon) {
-            return dy < 0 ? 270 : 90;
-        }
-        else if (Math.abs(dx - dy) < this.epsilon) {
-            return dx < 0 ? 225 : 45;
-        }
-        else if (Math.abs(dx + dy) < this.epsilon) {
-            return dx < 0 ? 315 : 135;
-        }
-        return ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
-    }
     isCollinear(p1, p2, p3) {
         // does pt1->pt2->pt3 make a straight line?
         // essentially this is just checking to see if
@@ -235,6 +220,9 @@ class SegmentLine extends SegmentBase {
     start2() {
         return this.p1;
     }
+    end2() {
+        return this.p0;
+    }
     end() {
         return this.p1;
     }
@@ -254,16 +242,6 @@ class SegmentLine extends SegmentBase {
             return p1;
         }
         return [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
-    }
-    tangentStart() {
-        const p0 = this.p0;
-        const p1 = this.p1;
-        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
-    }
-    tangentEnd() {
-        const p0 = this.p0;
-        const p1 = this.p1;
-        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
     }
     split(ts) {
         if (ts.length <= 0) {
@@ -298,6 +276,7 @@ class SegmentLine extends SegmentBase {
         const p1 = this.p1;
         ctx.moveTo(p0[0], p0[1]);
         ctx.lineTo(p1[0], p1[1]);
+        return ctx;
     }
 }
 class SegmentCurve extends SegmentBase {
@@ -323,6 +302,9 @@ class SegmentCurve extends SegmentBase {
     }
     start2() {
         return this.p1;
+    }
+    end2() {
+        return this.p2;
     }
     end() {
         return this.p3;
@@ -354,16 +336,6 @@ class SegmentCurve extends SegmentBase {
             p0[0] * t0 + p1[0] * t1 + p2[0] * t2 + p3[0] * t3,
             p0[1] * t0 + p1[1] * t1 + p2[1] * t2 + p3[1] * t3,
         ];
-    }
-    tangentStart() {
-        const p0 = this.p0;
-        const p1 = this.p1;
-        return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
-    }
-    tangentEnd() {
-        const p2 = this.p2;
-        const p3 = this.p3;
-        return this.geo.atan2deg(p3[1] - p2[1], p3[0] - p2[0]);
     }
     split(ts) {
         if (ts.length <= 0) {
@@ -575,6 +547,7 @@ class SegmentCurve extends SegmentBase {
         const p3 = this.p3;
         ctx.moveTo(p0[0], p0[1]);
         ctx.bezierCurveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+        return ctx;
     }
 }
 function projectPointOntoSegmentLine(p, seg) {
@@ -797,7 +770,7 @@ function segmentsIntersect(segA, segB, allowOutOfRange) {
 // SPDX-License-Identifier: 0BSD
 //
 class SegmentBoolBase {
-    constructor(data, fill = null, log = null) {
+    constructor(data, fill = null, closed = false, log = null) {
         var _a, _b, _c;
         this.otherFill = null;
         this.id = (_a = log === null || log === void 0 ? void 0 : log.segmentId()) !== null && _a !== void 0 ? _a : -1;
@@ -806,6 +779,7 @@ class SegmentBoolBase {
             above: (_b = fill === null || fill === void 0 ? void 0 : fill.above) !== null && _b !== void 0 ? _b : null,
             below: (_c = fill === null || fill === void 0 ? void 0 : fill.below) !== null && _c !== void 0 ? _c : null,
         };
+        this.closed = closed;
     }
 }
 class SegmentBoolLine extends SegmentBoolBase {
@@ -814,10 +788,10 @@ class SegmentBoolCurve extends SegmentBoolBase {
 }
 function copySegmentBool(seg, log) {
     if (seg instanceof SegmentBoolLine) {
-        return new SegmentBoolLine(seg.data, seg.myFill, log);
+        return new SegmentBoolLine(seg.data, seg.myFill, seg.closed, log);
     }
     else if (seg instanceof SegmentBoolCurve) {
-        return new SegmentBoolCurve(seg.data, seg.myFill, log);
+        return new SegmentBoolCurve(seg.data, seg.myFill, seg.closed, log);
     }
     throw new Error("PolyBool: Unknown SegmentBool in copySegmentBool");
 }
@@ -884,6 +858,7 @@ class Intersecter {
     constructor(selfIntersection, geo, log = null) {
         this.events = new ListBool();
         this.status = new ListBool();
+        this.currentPath = [];
         this.selfIntersection = selfIntersection;
         this.geo = geo;
         this.log = log;
@@ -923,9 +898,9 @@ class Intersecter {
         left.setEnd(p);
         right.setStart(p);
         const ns = right instanceof SegmentLine
-            ? new SegmentBoolLine(right, ev.seg.myFill, this.log)
+            ? new SegmentBoolLine(right, ev.seg.myFill, ev.seg.closed, this.log)
             : right instanceof SegmentCurve
-                ? new SegmentBoolCurve(right, ev.seg.myFill, this.log)
+                ? new SegmentBoolCurve(right, ev.seg.myFill, ev.seg.closed, this.log)
                 : null;
         if (!ns) {
             throw new Error("PolyBool: Unknown segment data in divideEvent");
@@ -939,6 +914,14 @@ class Intersecter {
         ev.other.p = p;
         this.addEvent(ev.other);
         return this.addSegment(ns, ev.primary);
+    }
+    beginPath() {
+        this.currentPath = [];
+    }
+    closePath() {
+        for (const seg of this.currentPath) {
+            seg.closed = true;
+        }
     }
     addSegment(seg, primary) {
         const evStart = new EventBool(true, seg.data.start(), seg, primary);
@@ -955,7 +938,9 @@ class Intersecter {
             // points are equal, so we have a zero-length segment
             return; // skip it
         }
-        this.addSegment(new SegmentBoolLine(new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo), null, this.log), primary);
+        const seg = new SegmentBoolLine(new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo), null, false, this.log);
+        this.currentPath.push(seg);
+        this.addSegment(seg, primary);
     }
     addCurve(from, c1, c2, to, primary = true) {
         const original = new SegmentCurve(from, c1, c2, to, this.geo);
@@ -972,28 +957,10 @@ class Intersecter {
                 this.addLine(line.p0, line.p1, primary);
             }
             else {
-                this.addSegment(new SegmentBoolCurve(f < 0 ? curve : curve.reverse(), null, this.log), primary);
+                const seg = new SegmentBoolCurve(f < 0 ? curve : curve.reverse(), null, false, this.log);
+                this.currentPath.push(seg);
+                this.addSegment(seg, primary);
             }
-        }
-    }
-    addRegion(region) {
-        // regions are a list of points:
-        //  [ [0, 0], [100, 0], [50, 100] ]
-        // you can add multiple regions before running calculate
-        // regions are a list of points:
-        //  [ [0, 0], [100, 0], [50, 100] ]
-        // you can add multiple regions before running calculate
-        let p1;
-        let p2 = region[region.length - 1];
-        for (let i = 0; i < region.length; i++) {
-            p1 = p2;
-            p2 = region[i];
-            const f = this.geo.compareVec2(p1, p2);
-            if (f === 0) {
-                // points are equal, so we have a zero-length segment
-                continue; // skip it
-            }
-            this.addSegment(new SegmentBoolLine(new SegmentLine(f < 0 ? p1 : p2, f < 0 ? p2 : p1, this.geo), null, this.log), true);
         }
     }
     compareSegments(seg1, seg2) {
@@ -1211,7 +1178,7 @@ class Intersecter {
                     if (this.selfIntersection) {
                         let toggle; // are we a toggling edge?
                         if (ev.seg.myFill.below === null) {
-                            toggle = true;
+                            toggle = ev.seg.closed;
                         }
                         else {
                             toggle = ev.seg.myFill.above !== ev.seg.myFill.below;
@@ -1248,9 +1215,8 @@ class Intersecter {
                 if (this.selfIntersection) {
                     let toggle; // are we a toggling edge?
                     if (ev.seg.myFill.below === null) {
-                        // if we are a new segment...
-                        // then we toggle
-                        toggle = true;
+                        // if we are new then we toggle if we're part of a closed path
+                        toggle = ev.seg.closed;
                     }
                     else {
                         // we are a segment that has previous knowledge from a division
@@ -1364,17 +1330,17 @@ function select(segments, selection, log) {
             (seg.myFill.below ? 4 : 0) +
             (seg.otherFill && seg.otherFill.above ? 2 : 0) +
             (seg.otherFill && seg.otherFill.below ? 1 : 0);
-        if (selection[index] !== 0) {
+        const flags = selection[index];
+        const above = (flags & 1) !== 0; // bit 1 if filled above
+        const below = (flags & 2) !== 0; // bit 2 if filled below
+        if ((!seg.closed && flags !== 0) || (seg.closed && above !== below)) {
             // copy the segment to the results, while also calculating the fill status
-            const fill = {
-                above: selection[index] === 1, // 1 if filled above
-                below: selection[index] === 2, // 2 if filled below
-            };
+            const fill = { above, below };
             if (seg instanceof SegmentBoolLine) {
-                result.push(new SegmentBoolLine(seg.data, fill, log));
+                result.push(new SegmentBoolLine(seg.data, fill, seg.closed, log));
             }
             else if (seg instanceof SegmentBoolCurve) {
-                result.push(new SegmentBoolCurve(seg.data, fill, log));
+                result.push(new SegmentBoolCurve(seg.data, fill, seg.closed, log));
             }
             else {
                 throw new Error("PolyBool: Unknown SegmentBool type in SegmentSelector");
@@ -1385,10 +1351,11 @@ function select(segments, selection, log) {
     return result;
 }
 class SegmentSelector {
+    // prettier-ignore
     static union(segments, log) {
         // primary | secondary
         // above1 below1 above2 below2    Keep?               Value
-        //    0      0      0      0   =>   no                  0
+        //    0      0      0      0   =>   yes if open         4
         //    0      0      0      1   =>   yes filled below    2
         //    0      0      1      0   =>   yes filled above    1
         //    0      0      1      1   =>   no                  0
@@ -1404,15 +1371,21 @@ class SegmentSelector {
         //    1      1      0      1   =>   no                  0
         //    1      1      1      0   =>   no                  0
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 2, 2, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0], log);
+        return select(segments, [
+            4, 2, 1, 0,
+            2, 2, 0, 0,
+            1, 0, 1, 0,
+            0, 0, 0, 0
+        ], log);
     }
+    // prettier-ignore
     static intersect(segments, log) {
         // primary & secondary
         // above1 below1 above2 below2    Keep?               Value
         //    0      0      0      0   =>   no                  0
         //    0      0      0      1   =>   no                  0
         //    0      0      1      0   =>   no                  0
-        //    0      0      1      1   =>   no                  0
+        //    0      0      1      1   =>   yes if open         4
         //    0      1      0      0   =>   no                  0
         //    0      1      0      1   =>   yes filled below    2
         //    0      1      1      0   =>   no                  0
@@ -1421,16 +1394,22 @@ class SegmentSelector {
         //    1      0      0      1   =>   no                  0
         //    1      0      1      0   =>   yes filled above    1
         //    1      0      1      1   =>   yes filled above    1
-        //    1      1      0      0   =>   no                  0
+        //    1      1      0      0   =>   yes if open         4
         //    1      1      0      1   =>   yes filled below    2
         //    1      1      1      0   =>   yes filled above    1
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 1, 1, 0, 2, 1, 0], log);
+        return select(segments, [
+            0, 0, 0, 4,
+            0, 2, 0, 2,
+            0, 0, 1, 1,
+            4, 2, 1, 0
+        ], log);
     }
+    // prettier-ignore
     static difference(segments, log) {
         // primary - secondary
         // above1 below1 above2 below2    Keep?               Value
-        //    0      0      0      0   =>   no                  0
+        //    0      0      0      0   =>   yes if open         4
         //    0      0      0      1   =>   no                  0
         //    0      0      1      0   =>   no                  0
         //    0      0      1      1   =>   no                  0
@@ -1446,12 +1425,18 @@ class SegmentSelector {
         //    1      1      0      1   =>   yes filled above    1
         //    1      1      1      0   =>   yes filled below    2
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 0, 0, 0, 2, 0, 2, 0, 1, 1, 0, 0, 0, 1, 2, 0], log);
+        return select(segments, [
+            4, 0, 0, 0,
+            2, 0, 2, 0,
+            1, 1, 0, 0,
+            0, 1, 2, 0
+        ], log);
     }
+    // prettier-ignore
     static differenceRev(segments, log) {
         // secondary - primary
         // above1 below1 above2 below2    Keep?               Value
-        //    0      0      0      0   =>   no                  0
+        //    0      0      0      0   =>   yes if open         4
         //    0      0      0      1   =>   yes filled below    2
         //    0      0      1      0   =>   yes filled above    1
         //    0      0      1      1   =>   no                  0
@@ -1467,12 +1452,18 @@ class SegmentSelector {
         //    1      1      0      1   =>   no                  0
         //    1      1      1      0   =>   no                  0
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 0, 0, 1, 1, 0, 2, 0, 2, 0, 0, 0, 0], log);
+        return select(segments, [
+            4, 2, 1, 0,
+            0, 0, 1, 1,
+            0, 2, 0, 2,
+            0, 0, 0, 0
+        ], log);
     }
+    // prettier-ignore
     static xor(segments, log) {
         // primary ^ secondary
         // above1 below1 above2 below2    Keep?               Value
-        //    0      0      0      0   =>   no                  0
+        //    0      0      0      0   =>   yes if open         4
         //    0      0      0      1   =>   yes filled below    2
         //    0      0      1      0   =>   yes filled above    1
         //    0      0      1      1   =>   no                  0
@@ -1488,7 +1479,12 @@ class SegmentSelector {
         //    1      1      0      1   =>   yes filled above    1
         //    1      1      1      0   =>   yes filled below    2
         //    1      1      1      1   =>   no                  0
-        return select(segments, [0, 2, 1, 0, 2, 0, 0, 1, 1, 0, 0, 2, 0, 1, 2, 0], log);
+        return select(segments, [
+            4, 2, 1, 0,
+            2, 0, 0, 1,
+            1, 0, 0, 2,
+            0, 1, 2, 0
+        ], log);
     }
 }
 
@@ -1541,11 +1537,14 @@ function joinSegments(seg1, seg2, geo) {
     }
     return false;
 }
-function SegmentChainer(segments, receiver, geo, log) {
-    const chains = [];
+function SegmentChainer(segments, geo, log) {
+    const closedChains = [];
+    const openChains = [];
     const regions = [];
     for (const segb of segments) {
         let seg = segb.data;
+        const closed = segb.closed;
+        const chains = closed ? closedChains : openChains;
         const pt1 = seg.start();
         const pt2 = seg.end();
         if (seg instanceof SegmentLine && geo.isEqualVec2(pt1, pt2)) {
@@ -1553,7 +1552,7 @@ function SegmentChainer(segments, receiver, geo, log) {
                 "probably too small or too large");
             continue;
         }
-        log === null || log === void 0 ? void 0 : log.chainStart(seg);
+        log === null || log === void 0 ? void 0 : log.chainStart(seg, closed);
         // search for two chains that this segment matches
         const firstMatch = {
             index: 0,
@@ -1607,34 +1606,34 @@ function SegmentChainer(segments, receiver, geo, log) {
         }
         if (nextMatch === firstMatch) {
             // we didn't match anything, so create a new chain
-            log === null || log === void 0 ? void 0 : log.chainNew(seg);
+            log === null || log === void 0 ? void 0 : log.chainNew(seg, closed);
             chains.push([seg]);
         }
         else if (nextMatch === secondMatch) {
             // we matched a single chain
             const index = firstMatch.index;
-            log === null || log === void 0 ? void 0 : log.chainMatch(index);
+            log === null || log === void 0 ? void 0 : log.chainMatch(index, closed);
             // add the other point to the apporpriate end
             const chain = chains[index];
             if (firstMatch.matchesHead) {
                 if (firstMatch.matchesPt1) {
                     seg = seg.reverse();
-                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg);
+                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg, closed);
                     chain.unshift(seg);
                 }
                 else {
-                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg);
+                    log === null || log === void 0 ? void 0 : log.chainAddHead(index, seg, closed);
                     chain.unshift(seg);
                 }
             }
             else {
                 if (firstMatch.matchesPt1) {
-                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg);
+                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg, closed);
                     chain.push(seg);
                 }
                 else {
                     seg = seg.reverse();
-                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg);
+                    log === null || log === void 0 ? void 0 : log.chainAddTail(index, seg, closed);
                     chain.push(seg);
                 }
             }
@@ -1643,7 +1642,7 @@ function SegmentChainer(segments, receiver, geo, log) {
                 const next = chain[1];
                 const newSeg = joinSegments(seg, next, geo);
                 if (newSeg) {
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyHead(index, newSeg);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyHead(index, newSeg, closed);
                     chain.shift();
                     chain[0] = newSeg;
                 }
@@ -1652,31 +1651,33 @@ function SegmentChainer(segments, receiver, geo, log) {
                 const next = chain[chain.length - 2];
                 const newSeg = joinSegments(next, seg, geo);
                 if (newSeg) {
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index, newSeg);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index, newSeg, closed);
                     chain.pop();
                     chain[chain.length - 1] = newSeg;
                 }
             }
             // check for closed chain
-            const segS = chain[0];
-            const segE = chain[chain.length - 1];
-            if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
-                const newStart = joinSegments(segE, segS, geo);
-                if (newStart) {
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyClose(index, newStart);
-                    chain.pop();
-                    chain[0] = newStart;
+            if (closed) {
+                const segS = chain[0];
+                const segE = chain[chain.length - 1];
+                if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
+                    const newStart = joinSegments(segE, segS, geo);
+                    if (newStart) {
+                        log === null || log === void 0 ? void 0 : log.chainSimplifyClose(index, newStart, closed);
+                        chain.pop();
+                        chain[0] = newStart;
+                    }
+                    // we have a closed chain!
+                    log === null || log === void 0 ? void 0 : log.chainClose(index, closed);
+                    chains.splice(index, 1);
+                    regions.push(chain);
                 }
-                // we have a closed chain!
-                log === null || log === void 0 ? void 0 : log.chainClose(index);
-                chains.splice(index, 1);
-                regions.push(chain);
             }
         }
         else {
             // otherwise, we matched two chains, so we need to combine those chains together
             function reverseChain(index) {
-                log === null || log === void 0 ? void 0 : log.chainReverse(index);
+                log === null || log === void 0 ? void 0 : log.chainReverse(index, closed);
                 const newChain = [];
                 for (const s of chains[index]) {
                     newChain.unshift(s.reverse());
@@ -1688,13 +1689,13 @@ function SegmentChainer(segments, receiver, geo, log) {
                 const chain1 = chains[index1];
                 const chain2 = chains[index2];
                 // add seg to chain1's tail
-                log === null || log === void 0 ? void 0 : log.chainAddTail(index1, seg);
+                log === null || log === void 0 ? void 0 : log.chainAddTail(index1, seg, closed);
                 chain1.push(seg);
                 // simplify chain1's tail
                 const next = chain1[chain1.length - 2];
                 const newEnd = joinSegments(next, seg, geo);
                 if (newEnd) {
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index1, newEnd);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyTail(index1, newEnd, closed);
                     chain1.pop();
                     chain1[chain1.length - 1] = newEnd;
                 }
@@ -1703,17 +1704,17 @@ function SegmentChainer(segments, receiver, geo, log) {
                 const head = chain2[0];
                 const newJoin = joinSegments(tail, head, geo);
                 if (newJoin) {
-                    log === null || log === void 0 ? void 0 : log.chainSimplifyJoin(index1, index2, newJoin);
+                    log === null || log === void 0 ? void 0 : log.chainSimplifyJoin(index1, index2, newJoin, closed);
                     chain2.shift();
                     chain1[chain1.length - 1] = newJoin;
                 }
-                log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2);
+                log === null || log === void 0 ? void 0 : log.chainJoin(index1, index2, closed);
                 chains[index1] = chain1.concat(chain2);
                 chains.splice(index2, 1);
             }
             const F = firstMatch.index;
             const S = secondMatch.index;
-            log === null || log === void 0 ? void 0 : log.chainConnect(F, S);
+            log === null || log === void 0 ? void 0 : log.chainConnect(F, S, closed);
             const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
             if (firstMatch.matchesHead) {
                 if (secondMatch.matchesHead) {
@@ -1784,7 +1785,16 @@ function SegmentChainer(segments, receiver, geo, log) {
             }
         }
     }
-    for (const region of regions) {
+    for (const c of openChains) {
+        regions.push(c);
+    }
+    return regions;
+}
+function segmentsToReceiver(segments, geo, receiver) {
+    for (const region of segments) {
+        if (region.length <= 0) {
+            continue;
+        }
         receiver.beginPath();
         for (let i = 0; i < region.length; i++) {
             const seg = region[i];
@@ -1802,8 +1812,13 @@ function SegmentChainer(segments, receiver, geo, log) {
                 throw new Error("PolyBool: Unknown segment instance");
             }
         }
-        receiver.closePath();
+        const first = region[0];
+        const last = region[region.length - 1];
+        if (geo.isEqualVec2(first.start(), last.end())) {
+            receiver.closePath();
+        }
     }
+    return receiver;
 }
 
 //
@@ -1813,25 +1828,29 @@ function SegmentChainer(segments, receiver, geo, log) {
 // SPDX-License-Identifier: 0BSD
 //
 class Shape {
-    constructor(segments, geo, log = null) {
+    constructor(geo, segments = null, log = null) {
         this.pathState = { kind: "beginPath" };
         this.geo = geo;
         this.log = log;
         if (segments) {
-            this.resultState = { final: true, segments };
+            this.resultState = { state: "seg", segments };
         }
         else {
             this.resultState = {
-                final: false,
+                state: "new",
                 selfIntersect: new Intersecter(true, this.geo, this.log),
             };
         }
     }
     beginPath() {
+        if (this.resultState.state !== "new") {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        this.resultState.selfIntersect.beginPath();
         return this.endPath();
     }
     moveTo(x, y) {
-        if (this.resultState.final) {
+        if (this.resultState.state !== "new") {
             throw new Error("PolyBool: Cannot change shape after using it in an operation");
         }
         if (this.pathState.kind !== "beginPath") {
@@ -1846,7 +1865,7 @@ class Shape {
         return this;
     }
     lineTo(x, y) {
-        if (this.resultState.final) {
+        if (this.resultState.state !== "new") {
             throw new Error("PolyBool: Cannot change shape after using it in an operation");
         }
         if (this.pathState.kind !== "moveTo") {
@@ -1858,7 +1877,7 @@ class Shape {
         return this;
     }
     bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
-        if (this.resultState.final) {
+        if (this.resultState.state !== "new") {
             throw new Error("PolyBool: Cannot change shape after using it in an operation");
         }
         if (this.pathState.kind !== "moveTo") {
@@ -1870,7 +1889,7 @@ class Shape {
         return this;
     }
     closePath() {
-        if (this.resultState.final) {
+        if (this.resultState.state !== "new") {
             throw new Error("PolyBool: Cannot change shape after using it in an operation");
         }
         // close with a line if needed
@@ -1878,27 +1897,38 @@ class Shape {
             !this.geo.isEqualVec2(this.pathState.start, this.pathState.current)) {
             this.lineTo(this.pathState.start[0], this.pathState.start[1]);
         }
+        this.resultState.selfIntersect.closePath();
         return this.endPath();
     }
     endPath() {
-        if (this.resultState.final) {
+        if (this.resultState.state !== "new") {
             throw new Error("PolyBool: Cannot change shape after using it in an operation");
         }
         this.pathState = { kind: "beginPath" };
         return this;
     }
     selfIntersect() {
-        if (!this.resultState.final) {
+        if (this.resultState.state === "new") {
             this.resultState = {
-                final: true,
+                state: "seg",
                 segments: this.resultState.selfIntersect.calculate(),
             };
         }
         return this.resultState.segments;
     }
+    segments() {
+        if (this.resultState.state !== "reg") {
+            const seg = this.selfIntersect();
+            this.resultState = {
+                state: "reg",
+                segments: seg,
+                regions: SegmentChainer(seg, this.geo, this.log),
+            };
+        }
+        return this.resultState.regions;
+    }
     output(receiver) {
-        SegmentChainer(this.selfIntersect(), receiver, this.geo, this.log);
-        return receiver;
+        return segmentsToReceiver(this.segments(), this.geo, receiver);
     }
     combine(shape) {
         const int = new Intersecter(false, this.geo, this.log);
@@ -1918,19 +1948,19 @@ class ShapeCombined {
         this.log = log;
     }
     union() {
-        return new Shape(SegmentSelector.union(this.segments, this.log), this.geo, this.log);
+        return new Shape(this.geo, SegmentSelector.union(this.segments, this.log), this.log);
     }
     intersect() {
-        return new Shape(SegmentSelector.intersect(this.segments, this.log), this.geo, this.log);
+        return new Shape(this.geo, SegmentSelector.intersect(this.segments, this.log), this.log);
     }
     difference() {
-        return new Shape(SegmentSelector.difference(this.segments, this.log), this.geo, this.log);
+        return new Shape(this.geo, SegmentSelector.difference(this.segments, this.log), this.log);
     }
     differenceRev() {
-        return new Shape(SegmentSelector.differenceRev(this.segments, this.log), this.geo, this.log);
+        return new Shape(this.geo, SegmentSelector.differenceRev(this.segments, this.log), this.log);
     }
     xor() {
-        return new Shape(SegmentSelector.xor(this.segments, this.log), this.geo, this.log);
+        return new Shape(this.geo, SegmentSelector.xor(this.segments, this.log), this.log);
     }
 }
 
@@ -1994,44 +2024,44 @@ class BuildLog {
     selected(segs) {
         this.push("selected", { segs });
     }
-    chainStart(seg) {
-        this.push("chain_start", { seg });
+    chainStart(seg, closed) {
+        this.push("chain_start", { seg, closed });
     }
-    chainNew(seg) {
-        this.push("chain_new", { seg });
+    chainNew(seg, closed) {
+        this.push("chain_new", { seg, closed });
     }
-    chainMatch(index) {
-        this.push("chain_match", { index });
+    chainMatch(index, closed) {
+        this.push("chain_match", { index, closed });
     }
-    chainClose(index) {
-        this.push("chain_close", { index });
+    chainClose(index, closed) {
+        this.push("chain_close", { index, closed });
     }
-    chainAddHead(index, seg) {
-        this.push("chain_add_head", { index, seg });
+    chainAddHead(index, seg, closed) {
+        this.push("chain_add_head", { index, seg, closed });
     }
-    chainAddTail(index, seg) {
-        this.push("chain_add_tail", { index, seg });
+    chainAddTail(index, seg, closed) {
+        this.push("chain_add_tail", { index, seg, closed });
     }
-    chainSimplifyHead(index, seg) {
-        this.push("chain_simp_head", { index, seg });
+    chainSimplifyHead(index, seg, closed) {
+        this.push("chain_simp_head", { index, seg, closed });
     }
-    chainSimplifyTail(index, seg) {
-        this.push("chain_simp_tail", { index, seg });
+    chainSimplifyTail(index, seg, closed) {
+        this.push("chain_simp_tail", { index, seg, closed });
     }
-    chainSimplifyClose(index, seg) {
-        this.push("chain_simp_close", { index, seg });
+    chainSimplifyClose(index, seg, closed) {
+        this.push("chain_simp_close", { index, seg, closed });
     }
-    chainSimplifyJoin(index1, index2, seg) {
-        this.push("chain_simp_join", { index1, index2, seg });
+    chainSimplifyJoin(index1, index2, seg, closed) {
+        this.push("chain_simp_join", { index1, index2, seg, closed });
     }
-    chainConnect(index1, index2) {
-        this.push("chain_con", { index1, index2 });
+    chainConnect(index1, index2, closed) {
+        this.push("chain_con", { index1, index2, closed });
     }
-    chainReverse(index) {
-        this.push("chain_rev", { index });
+    chainReverse(index, closed) {
+        this.push("chain_rev", { index, closed });
     }
-    chainJoin(index1, index2) {
-        this.push("chain_join", { index1, index2 });
+    chainJoin(index1, index2, closed) {
+        this.push("chain_join", { index1, index2, closed });
     }
     done() {
         this.push("done", null);
@@ -2050,7 +2080,7 @@ class PolyBool {
         this.log = log;
     }
     shape() {
-        return new Shape(null, this.geo, this.log);
+        return new Shape(this.geo, null, this.log);
     }
     buildLog(enable) {
         var _a;
@@ -2196,11 +2226,16 @@ class PolyBool {
 }
 const polybool = new PolyBool();
 
-exports.BuildLog = BuildLog;
+exports.EventBool = EventBool;
+exports.Geometry = Geometry;
 exports.GeometryEpsilon = GeometryEpsilon;
 exports.Intersecter = Intersecter;
+exports.ListBool = ListBool;
 exports.PolyBool = PolyBool;
 exports.SegmentBase = SegmentBase;
+exports.SegmentBoolBase = SegmentBoolBase;
+exports.SegmentBoolCurve = SegmentBoolCurve;
+exports.SegmentBoolLine = SegmentBoolLine;
 exports.SegmentChainer = SegmentChainer;
 exports.SegmentCurve = SegmentCurve;
 exports.SegmentLine = SegmentLine;
@@ -2209,9 +2244,17 @@ exports.SegmentTValuePairsBuilder = SegmentTValuePairsBuilder;
 exports.SegmentTValuesBuilder = SegmentTValuesBuilder;
 exports.Shape = Shape;
 exports.ShapeCombined = ShapeCombined;
+exports.boundingBoxesIntersect = boundingBoxesIntersect;
+exports.copySegmentBool = copySegmentBool;
 exports.default = polybool;
+exports.joinCurves = joinCurves;
+exports.joinLines = joinLines;
+exports.joinSegments = joinSegments;
+exports.lerp = lerp;
+exports.lerpVec2 = lerpVec2;
 exports.projectPointOntoSegmentLine = projectPointOntoSegmentLine;
 exports.segmentCurveIntersectSegmentCurve = segmentCurveIntersectSegmentCurve;
 exports.segmentLineIntersectSegmentCurve = segmentLineIntersectSegmentCurve;
 exports.segmentLineIntersectSegmentLine = segmentLineIntersectSegmentLine;
 exports.segmentsIntersect = segmentsIntersect;
+exports.segmentsToReceiver = segmentsToReceiver;

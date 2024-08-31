@@ -33,7 +33,6 @@ export function boundingBoxesIntersect(
 export abstract class Geometry {
   abstract snap0(v: number): number;
   abstract snap01(v: number): number;
-  abstract atan2deg(dy: number, dx: number): number; // returns 0-360
   abstract isCollinear(p1: Vec2, p2: Vec2, p3: Vec2): boolean;
   abstract solveCubic(a: number, b: number, c: number, d: number): number[];
   abstract isEqualVec2(a: Vec2, b: Vec2): boolean;
@@ -63,19 +62,6 @@ export class GeometryEpsilon extends Geometry {
       return 1;
     }
     return v;
-  }
-
-  atan2deg(dy: number, dx: number) {
-    if (Math.abs(dy) < this.epsilon) {
-      return dx > 0 || Math.abs(dx) < this.epsilon ? 0 : 180;
-    } else if (Math.abs(dx) < this.epsilon) {
-      return dy < 0 ? 270 : 90;
-    } else if (Math.abs(dx - dy) < this.epsilon) {
-      return dx < 0 ? 225 : 45;
-    } else if (Math.abs(dx + dy) < this.epsilon) {
-      return dx < 0 ? 315 : 135;
-    }
-    return ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
   }
 
   isCollinear(p1: Vec2, p2: Vec2, p3: Vec2) {

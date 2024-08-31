@@ -30,7 +30,7 @@ export interface IPolyBoolReceiver {
   closePath: () => void;
 }
 
-function joinLines(
+export function joinLines(
   seg1: SegmentLine,
   seg2: SegmentLine,
   geo: Geometry,
@@ -41,7 +41,7 @@ function joinLines(
   return false;
 }
 
-function joinCurves(
+export function joinCurves(
   seg1: SegmentCurve,
   seg2: SegmentCurve,
   geo: Geometry,
@@ -78,7 +78,7 @@ function joinCurves(
   return false;
 }
 
-function joinSegments(
+export function joinSegments(
   seg1: Segment | undefined,
   seg2: Segment | undefined,
   geo: Geometry,
@@ -95,17 +95,19 @@ function joinSegments(
   return false;
 }
 
-export default function SegmentChainer<T extends IPolyBoolReceiver>(
+export function SegmentChainer(
   segments: SegmentBool[],
-  receiver: T,
   geo: Geometry,
   log: BuildLog | null,
-) {
-  const chains: Segment[][] = [];
+): Segment[][] {
+  const closedChains: Segment[][] = [];
+  const openChains: Segment[][] = [];
   const regions: Segment[][] = [];
 
   for (const segb of segments) {
     let seg = segb.data;
+    const closed = segb.closed;
+    const chains = closed ? closedChains : openChains;
     const pt1 = seg.start();
     const pt2 = seg.end();
 
@@ -117,7 +119,7 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
       continue;
     }
 
-    log?.chainStart(seg);
+    log?.chainStart(seg, closed);
 
     // search for two chains that this segment matches
     const firstMatch = {
@@ -174,31 +176,31 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
 
     if (nextMatch === firstMatch) {
       // we didn't match anything, so create a new chain
-      log?.chainNew(seg);
+      log?.chainNew(seg, closed);
       chains.push([seg]);
     } else if (nextMatch === secondMatch) {
       // we matched a single chain
       const index = firstMatch.index;
-      log?.chainMatch(index);
+      log?.chainMatch(index, closed);
 
       // add the other point to the apporpriate end
       const chain = chains[index];
       if (firstMatch.matchesHead) {
         if (firstMatch.matchesPt1) {
           seg = seg.reverse();
-          log?.chainAddHead(index, seg);
+          log?.chainAddHead(index, seg, closed);
           chain.unshift(seg);
         } else {
-          log?.chainAddHead(index, seg);
+          log?.chainAddHead(index, seg, closed);
           chain.unshift(seg);
         }
       } else {
         if (firstMatch.matchesPt1) {
-          log?.chainAddTail(index, seg);
+          log?.chainAddTail(index, seg, closed);
           chain.push(seg);
         } else {
           seg = seg.reverse();
-          log?.chainAddTail(index, seg);
+          log?.chainAddTail(index, seg, closed);
           chain.push(seg);
         }
       }
@@ -208,7 +210,7 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         const next = chain[1];
         const newSeg = joinSegments(seg, next, geo);
         if (newSeg) {
-          log?.chainSimplifyHead(index, newSeg);
+          log?.chainSimplifyHead(index, newSeg, closed);
           chain.shift();
           chain[0] = newSeg;
         }
@@ -216,33 +218,35 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         const next = chain[chain.length - 2];
         const newSeg = joinSegments(next, seg, geo);
         if (newSeg) {
-          log?.chainSimplifyTail(index, newSeg);
+          log?.chainSimplifyTail(index, newSeg, closed);
           chain.pop();
           chain[chain.length - 1] = newSeg;
         }
       }
 
       // check for closed chain
-      const segS = chain[0];
-      const segE = chain[chain.length - 1];
-      if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
-        const newStart = joinSegments(segE, segS, geo);
-        if (newStart) {
-          log?.chainSimplifyClose(index, newStart);
-          chain.pop();
-          chain[0] = newStart;
-        }
+      if (closed) {
+        const segS = chain[0];
+        const segE = chain[chain.length - 1];
+        if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
+          const newStart = joinSegments(segE, segS, geo);
+          if (newStart) {
+            log?.chainSimplifyClose(index, newStart, closed);
+            chain.pop();
+            chain[0] = newStart;
+          }
 
-        // we have a closed chain!
-        log?.chainClose(index);
-        chains.splice(index, 1);
-        regions.push(chain);
+          // we have a closed chain!
+          log?.chainClose(index, closed);
+          chains.splice(index, 1);
+          regions.push(chain);
+        }
       }
     } else {
       // otherwise, we matched two chains, so we need to combine those chains together
 
       function reverseChain(index: number) {
-        log?.chainReverse(index);
+        log?.chainReverse(index, closed);
         const newChain: Segment[] = [];
         for (const s of chains[index]) {
           newChain.unshift(s.reverse());
@@ -256,14 +260,14 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         const chain2 = chains[index2];
 
         // add seg to chain1's tail
-        log?.chainAddTail(index1, seg);
+        log?.chainAddTail(index1, seg, closed);
         chain1.push(seg);
 
         // simplify chain1's tail
         const next = chain1[chain1.length - 2];
         const newEnd = joinSegments(next, seg, geo);
         if (newEnd) {
-          log?.chainSimplifyTail(index1, newEnd);
+          log?.chainSimplifyTail(index1, newEnd, closed);
           chain1.pop();
           chain1[chain1.length - 1] = newEnd;
         }
@@ -273,12 +277,12 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         const head = chain2[0];
         const newJoin = joinSegments(tail, head, geo);
         if (newJoin) {
-          log?.chainSimplifyJoin(index1, index2, newJoin);
+          log?.chainSimplifyJoin(index1, index2, newJoin, closed);
           chain2.shift();
           chain1[chain1.length - 1] = newJoin;
         }
 
-        log?.chainJoin(index1, index2);
+        log?.chainJoin(index1, index2, closed);
         chains[index1] = chain1.concat(chain2);
         chains.splice(index2, 1);
       }
@@ -286,7 +290,7 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
       const F = firstMatch.index;
       const S = secondMatch.index;
 
-      log?.chainConnect(F, S);
+      log?.chainConnect(F, S, closed);
 
       const reverseF = chains[F].length < chains[S].length; // reverse the shorter chain, if needed
       if (firstMatch.matchesHead) {
@@ -353,8 +357,21 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
       }
     }
   }
+  for (const c of openChains) {
+    regions.push(c);
+  }
+  return regions;
+}
 
-  for (const region of regions) {
+export function segmentsToReceiver<T extends IPolyBoolReceiver>(
+  segments: Segment[][],
+  geo: Geometry,
+  receiver: T,
+): T {
+  for (const region of segments) {
+    if (region.length <= 0) {
+      continue;
+    }
     receiver.beginPath();
     for (let i = 0; i < region.length; i++) {
       const seg = region[i];
@@ -377,6 +394,11 @@ export default function SegmentChainer<T extends IPolyBoolReceiver>(
         throw new Error("PolyBool: Unknown segment instance");
       }
     }
-    receiver.closePath();
+    const first = region[0];
+    const last = region[region.length - 1];
+    if (geo.isEqualVec2(first.start(), last.end())) {
+      receiver.closePath();
+    }
   }
+  return receiver;
 }

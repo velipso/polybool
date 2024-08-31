@@ -9,7 +9,12 @@ import { type Geometry, type Vec2 } from "./Geometry";
 import type BuildLog from "./BuildLog";
 import { type SegmentBool, Intersecter, copySegmentBool } from "./Intersecter";
 import { SegmentSelector } from "./SegmentSelector";
-import SegmentChainer, { type IPolyBoolReceiver } from "./SegmentChainer";
+import {
+  SegmentChainer,
+  segmentsToReceiver,
+  type IPolyBoolReceiver,
+} from "./SegmentChainer";
+import { type Segment } from "./Segment";
 
 interface IPathStateCommon<K extends string> {
   kind: K;
@@ -29,32 +34,39 @@ export class Shape {
   private readonly log: BuildLog | null;
   private pathState: IPathState = { kind: "beginPath" };
   private resultState:
-    | { final: false; selfIntersect: Intersecter }
-    | { final: true; segments: SegmentBool[] };
+    | { state: "new"; selfIntersect: Intersecter }
+    | { state: "seg"; segments: SegmentBool[] }
+    | { state: "reg"; segments: SegmentBool[]; regions: Segment[][] };
 
   constructor(
-    segments: SegmentBool[] | null,
     geo: Geometry,
+    segments: SegmentBool[] | null = null,
     log: BuildLog | null = null,
   ) {
     this.geo = geo;
     this.log = log;
     if (segments) {
-      this.resultState = { final: true, segments };
+      this.resultState = { state: "seg", segments };
     } else {
       this.resultState = {
-        final: false,
+        state: "new",
         selfIntersect: new Intersecter(true, this.geo, this.log),
       };
     }
   }
 
   beginPath() {
+    if (this.resultState.state !== "new") {
+      throw new Error(
+        "PolyBool: Cannot change shape after using it in an operation",
+      );
+    }
+    this.resultState.selfIntersect.beginPath();
     return this.endPath();
   }
 
   moveTo(x: number, y: number) {
-    if (this.resultState.final) {
+    if (this.resultState.state !== "new") {
       throw new Error(
         "PolyBool: Cannot change shape after using it in an operation",
       );
@@ -72,7 +84,7 @@ export class Shape {
   }
 
   lineTo(x: number, y: number) {
-    if (this.resultState.final) {
+    if (this.resultState.state !== "new") {
       throw new Error(
         "PolyBool: Cannot change shape after using it in an operation",
       );
@@ -94,7 +106,7 @@ export class Shape {
     x: number,
     y: number,
   ) {
-    if (this.resultState.final) {
+    if (this.resultState.state !== "new") {
       throw new Error(
         "PolyBool: Cannot change shape after using it in an operation",
       );
@@ -116,7 +128,7 @@ export class Shape {
   }
 
   closePath() {
-    if (this.resultState.final) {
+    if (this.resultState.state !== "new") {
       throw new Error(
         "PolyBool: Cannot change shape after using it in an operation",
       );
@@ -128,11 +140,12 @@ export class Shape {
     ) {
       this.lineTo(this.pathState.start[0], this.pathState.start[1]);
     }
+    this.resultState.selfIntersect.closePath();
     return this.endPath();
   }
 
   endPath() {
-    if (this.resultState.final) {
+    if (this.resultState.state !== "new") {
       throw new Error(
         "PolyBool: Cannot change shape after using it in an operation",
       );
@@ -142,18 +155,29 @@ export class Shape {
   }
 
   private selfIntersect() {
-    if (!this.resultState.final) {
+    if (this.resultState.state === "new") {
       this.resultState = {
-        final: true,
+        state: "seg",
         segments: this.resultState.selfIntersect.calculate(),
       };
     }
     return this.resultState.segments;
   }
 
+  segments() {
+    if (this.resultState.state !== "reg") {
+      const seg = this.selfIntersect();
+      this.resultState = {
+        state: "reg",
+        segments: seg,
+        regions: SegmentChainer(seg, this.geo, this.log),
+      };
+    }
+    return this.resultState.regions;
+  }
+
   output<T extends IPolyBoolReceiver>(receiver: T): T {
-    SegmentChainer(this.selfIntersect(), receiver, this.geo, this.log);
-    return receiver;
+    return segmentsToReceiver(this.segments(), this.geo, receiver);
   }
 
   combine(shape: Shape) {
@@ -185,40 +209,40 @@ export class ShapeCombined {
 
   union() {
     return new Shape(
-      SegmentSelector.union(this.segments, this.log),
       this.geo,
+      SegmentSelector.union(this.segments, this.log),
       this.log,
     );
   }
 
   intersect() {
     return new Shape(
-      SegmentSelector.intersect(this.segments, this.log),
       this.geo,
+      SegmentSelector.intersect(this.segments, this.log),
       this.log,
     );
   }
 
   difference() {
     return new Shape(
-      SegmentSelector.difference(this.segments, this.log),
       this.geo,
+      SegmentSelector.difference(this.segments, this.log),
       this.log,
     );
   }
 
   differenceRev() {
     return new Shape(
-      SegmentSelector.differenceRev(this.segments, this.log),
       this.geo,
+      SegmentSelector.differenceRev(this.segments, this.log),
       this.log,
     );
   }
 
   xor() {
     return new Shape(
-      SegmentSelector.xor(this.segments, this.log),
       this.geo,
+      SegmentSelector.xor(this.segments, this.log),
       this.log,
     );
   }

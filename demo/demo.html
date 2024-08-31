@@ -66,6 +66,18 @@ var polyCases = [{
     inverted: false
   }
 }, {
+  name: 'Open Paths',
+  shape1: [
+    [ [540,60],[540,180],[420,180],[420,60] ],
+    [ [130,160],[350,60],[560,160] ],
+  ],
+  shape1Open: [1],
+  shape2: [
+    [ [280,60],[280,180],[150,180],[150,60] ],
+    [ [130,80],[280,180,420,180,560,80] ],
+  ],
+  shape2Open: [1],
+}, {
   name: 'Curved Shapes 1',
   poly1: {
     regions: [
@@ -456,35 +468,6 @@ function colToHex(color){
   return '#' + hex(color[0]) + hex(color[1]) + hex(color[2]);
 }
 
-function vertRadius(region, vert, j){
-  if (vert === false)
-    return 0;
-  if (hover !== false && hover.region === region && hover.vert === vert && hover.j === j)
-    return 6;
-  return 3;
-}
-
-function drawVerts(poly, offset){
-  ctx.save();
-  poly.regions.forEach(function(region){
-    for (var i = 0; i < region.length; i++){
-      const p = region[i];
-      for (let j = 0; j < p.length; j += 2) {
-        ctx.beginPath();
-        ctx.arc(
-          scaleX(p[j]),
-          scaleY(p[j + 1]) + offset,
-          vertRadius(region, i, j),
-          0, Math.PI * 2
-        );
-        ctx.globalAlpha = j < p.length - 2 ? 0.25 : 1;
-        ctx.fill();
-      }
-    }
-  });
-  ctx.restore();
-}
-
 var buildLogMax = 0;
 var buildLogTimer = false;
 function buildLogNext(delta){
@@ -542,8 +525,10 @@ function buildLogPlay(){
 
 class Receiver {
   regions = [];
+  open = [];
 
   beginPath() {
+    this.open.push(this.regions.length);
     this.regions.push([]);
   }
 
@@ -560,19 +545,25 @@ class Receiver {
   }
 
   closePath() {
+    this.open.splice(
+      this.open.indexOf(this.regions.length - 1),
+      1
+    );
   }
 
   done() {
     return {
       regions: this.regions,
-      inverted: false
+      open: this.open,
+      inverted: false,
     };
   }
 }
 
-function makeShape(regions) {
+function makeShape(regions, open) {
   const shape = polybool.shape();
-  for (const region of regions) {
+  for (let i = 0; i < regions.length; i++) {
+    const region = regions[i];
     shape.beginPath();
     let here = [0, 0];
     for (let i = 0; i < region.length; i++) {
@@ -604,7 +595,9 @@ function makeShape(regions) {
         here = [pt[4], pt[5]];
       }
     }
-    shape.closePath();
+    if (open.indexOf(i) < 0) {
+      shape.closePath();
+    }
   }
   return shape;
 }
@@ -637,7 +630,10 @@ function recalc(){
     })[mode];
     var BL = polybool.buildLog(true);
     window.clipResult = clipResult = {
-      result: func(makeShape(demo.shape1), makeShape(demo.shape2)),
+      result: func(
+        makeShape(demo.shape1, demo.shape1Open || []),
+        makeShape(demo.shape2, demo.shape2Open || [])
+      ),
       build_log: BL
     };
   }
@@ -668,65 +664,116 @@ function unscaleY(y){
   return (y - 25) * (polyBox.max[1] - polyBox.min[1]) / 200 + polyBox.min[1];
 }
 
-function drawRegions(regions, offset){
-  const mapPt = (p, j) => (j % 2) ? scaleY(p) + offset : scaleX(p);
-  for (const region of regions) {
-    const lastPt = region[region.length - 1].map(mapPt);
-    ctx.moveTo(
-      lastPt[lastPt.length - 2],
-      lastPt[lastPt.length - 1]
-    );
-    for (let i = 0; i < region.length; i++) {
-      const pt = region[i].map(mapPt);
-      if (pt.length === 2) {
-        ctx.lineTo(pt[0], pt[1]);
-      } else {
-        ctx.bezierCurveTo(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5]);
+function drawPolys(polys) {
+  const mapPt = (offset) => (p, j) => (j % 2) ? scaleY(p) + offset : scaleX(p);
+
+  function drawRegions(poly, fill) {
+    for (let r = 0; r < poly.regions.length; r++) {
+      const region = poly.regions[r];
+      const closed = poly.open.indexOf(r) < 0;
+      if (closed) {
+        const lastPt = region[region.length - 1].map(mapPt(poly.offset));
+        ctx.moveTo(
+          lastPt[lastPt.length - 2],
+          lastPt[lastPt.length - 1]
+        );
+      } else if (fill) {
+        continue;
+      }
+      for (let i = 0; i < region.length; i++) {
+        const pt = region[i].map(mapPt(poly.offset));
+        if (!closed && i === 0) {
+          ctx.moveTo(pt[0], pt[1]);
+        } else if (pt.length === 2) {
+          ctx.lineTo(pt[0], pt[1]);
+        } else {
+          ctx.bezierCurveTo(pt[0], pt[1], pt[2], pt[3], pt[4], pt[5]);
+        }
+      }
+      if (closed) {
+        ctx.closePath();
       }
     }
-    ctx.closePath();
   }
-}
 
-function polyStroke(result, offset){
-  ctx.beginPath();
-  drawRegions(result.regions, offset);
-  ctx.stroke();
-  ctx.beginPath();
+  // fill all closed regions
+  for (const poly of polys) {
+    ctx.beginPath();
+    if (poly.inverted){
+      ctx.moveTo(poly.invertedRect[0][0], poly.invertedRect[0][1] + poly.offset);
+      ctx.lineTo(poly.invertedRect[0][0], poly.invertedRect[1][1] + poly.offset);
+      ctx.lineTo(poly.invertedRect[1][0], poly.invertedRect[1][1] + poly.offset);
+      ctx.lineTo(poly.invertedRect[1][0], poly.invertedRect[0][1] + poly.offset);
+      ctx.closePath();
+    }
+    drawRegions(poly, true);
+    ctx.fillStyle = poly.fill;
+    ctx.fill('evenodd');
+  }
+
+  // draw lines
+  for (const poly of polys) {
+    ctx.beginPath();
+    drawRegions(poly, false);
+    ctx.strokeStyle = poly.stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   // draw control segments
-  for (const region of result.regions) {
-    const lastPt = region[region.length - 1];
-    ctx.moveTo(
-      scaleX(lastPt[lastPt.length - 2]),
-      scaleY(lastPt[lastPt.length - 1]) + offset
-    );
-    for (const p of region) {
-      if (p.length === 6) {
-        ctx.lineTo(scaleX(p[0]), scaleY(p[1]) + offset);
-        ctx.moveTo(scaleX(p[2]), scaleY(p[3]) + offset);
-        ctx.lineTo(scaleX(p[4]), scaleY(p[5]) + offset);
-      } else {
-        ctx.moveTo(scaleX(p[0]), scaleY(p[1]) + offset);
+  for (const poly of polys) {
+    ctx.beginPath();
+    for (const region of poly.regions) {
+      const lastPt = region[region.length - 1].map(mapPt(poly.offset));
+      ctx.moveTo(
+        lastPt[lastPt.length - 2],
+        lastPt[lastPt.length - 1]
+      );
+      for (const pt of region) {
+        const p = pt.map(mapPt(poly.offset));
+        if (p.length === 6) {
+          ctx.lineTo(p[0], p[1]);
+          ctx.moveTo(p[2], p[3]);
+          ctx.lineTo(p[4], p[5]);
+        } else {
+          ctx.moveTo(p[0], p[1]);
+        }
       }
     }
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = poly.stroke;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.save();
-  ctx.globalAlpha = 0.25;
-  ctx.stroke();
-  ctx.restore();
-}
 
-function polyFill(result, rect1, rect2, offset){
-  ctx.beginPath();
-  if (result.inverted){
-    ctx.moveTo(rect1[0], rect1[1] + offset);
-    ctx.lineTo(rect1[0], rect2[1] + offset);
-    ctx.lineTo(rect2[0], rect2[1] + offset);
-    ctx.lineTo(rect2[0], rect1[1] + offset);
-    ctx.closePath();
+  // draw verticies
+  for (const poly of polys) {
+    ctx.save();
+    for (const region of poly.regions) {
+      for (let i = 0; i < region.length; i++){
+        const p = region[i];
+        for (let j = 0; j < p.length; j += 2) {
+          let rad = 3;
+          if (hover && hover.region === region && hover.vert === i && hover.j === j) {
+            rad = 6;
+          }
+          ctx.beginPath();
+          ctx.arc(
+            scaleX(p[j]),
+            scaleY(p[j + 1]) + poly.offset,
+            rad,
+            0, Math.PI * 2
+          );
+          ctx.globalAlpha = j < p.length - 2 ? 0.25 : 1;
+          ctx.fillStyle = poly.stroke;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
   }
-  drawRegions(result.regions, offset);
-  ctx.fill('evenodd');
 }
 
 function segStart(seg) {
@@ -832,11 +879,25 @@ function redraw(){
   var bl_last_done = false;
   var bl_finish = false;
   var bl_status = [];
-  var bl_chains = [];
-  var bl_chainids = [];
+  var bl_chains_o = [];
+  var bl_chainids_o = [];
+  var bl_oldchains_o = [];
+  var bl_oldchainids_o = [];
+  var bl_chains_c = [];
+  var bl_chainids_c = [];
+  var bl_oldchains_c = [];
+  var bl_oldchainids_c = [];
+  var bl_chains_x = bl_chains_o;
+  var bl_chainids_x = bl_chainids_o;
+  var bl_oldchains_x = bl_oldchains_o;
+  var bl_oldchainids_x = bl_oldchainids_o;
+  const setChainClosed = (closed) => {
+    bl_chains_x = closed ? bl_chains_c : bl_chains_o;
+    bl_chainids_x = closed ? bl_chainids_c : bl_chainids_o;
+    bl_oldchains_x = closed ? bl_oldchains_c : bl_oldchains_o;
+    bl_oldchainids_x = closed ? bl_oldchainids_c : bl_oldchainids_o;
+  };
   var bl_nextchainid = 0;
-  var bl_oldchains = [];
-  var bl_oldchainids = [];
   var bl_phase = 0;
   var bl_selected = false;
   var bl_info = [];
@@ -979,14 +1040,16 @@ function redraw(){
         bl_last_seg_keep_match = false;
         break;
       case 'chain_new':
-        bl_chains.push([bl.seg]);
-        bl_chainids.push(bl_nextchainid++);
+        setChainClosed(bl.closed);
+        bl_chains_x.push([bl.seg]);
+        bl_chainids_x.push(bl_nextchainid++);
         bl_last_seg_keep = false;
         break;
       case 'chain_rev': {
+        setChainClosed(bl.closed);
         const newChain = [];
         for (let i = 0; i < bl_chains[bl.index].length; i++) {
-          let seg = bl_chains[bl.index][i];
+          let seg = bl_chains_x[bl.index][i];
           if ('p3' in seg) {
             seg = { p0: seg.p3, p1: seg.p2, p2: seg.p1, p3: seg.p0 };
           } else {
@@ -994,50 +1057,58 @@ function redraw(){
           }
           newChain.unshift(seg);
         }
-        bl_chains[bl.index] = newChain;
+        bl_chains_x[bl.index] = newChain;
         break;
       }
       case 'chain_add_head':
-        bl_chains[bl.index].unshift(bl.seg);
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index].unshift(bl.seg);
         bl_last_seg_keep = false;
         break;
       case 'chain_add_tail':
-        bl_chains[bl.index].push(bl.seg);
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index].push(bl.seg);
         bl_last_seg_keep = false;
         break;
       case 'chain_simp_head':
-        bl_chains[bl.index].shift();
-        bl_chains[bl.index][0] = bl.seg;
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index].shift();
+        bl_chains_x[bl.index][0] = bl.seg;
         break;
       case 'chain_simp_tail':
-        bl_chains[bl.index].pop();
-        bl_chains[bl.index][bl_chains[bl.index].length - 1] = bl.seg;
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index].pop();
+        bl_chains_x[bl.index][bl_chains_x[bl.index].length - 1] = bl.seg;
         break;
       case 'chain_simp_close':
-        bl_chains[bl.index].pop();
-        bl_chains[bl.index].shift();
-        bl_chains[bl.index].unshift(bl.seg);
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index].pop();
+        bl_chains_x[bl.index].shift();
+        bl_chains_x[bl.index].unshift(bl.seg);
         break;
       case 'chain_simp_join':
-        bl_chains[bl.index1].pop();
-        bl_chains[bl.index2].shift();
-        bl_chains[bl.index1].push(bl.seg);
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index1].pop();
+        bl_chains_x[bl.index2].shift();
+        bl_chains_x[bl.index1].push(bl.seg);
         break;
       case 'chain_match':
-        bl_last_seg_keep_match = bl.index;
+        bl_last_seg_keep_match = { i: bl.index, c: bl.closed };
         break;
       case 'chain_con':
-        bl_last_seg_keep_match = bl.index1;
+        bl_last_seg_keep_match = { i: bl.index1, c: bl.closed };
         break;
       case 'chain_join':
-        bl_chains[bl.index1] = bl_chains[bl.index1].concat(bl_chains[bl.index2]);
-        bl_chains.splice(bl.index2, 1);
-        bl_chainids.splice(bl.index2, 1);
+        setChainClosed(bl.closed);
+        bl_chains_x[bl.index1] = bl_chains_x[bl.index1].concat(bl_chains_x[bl.index2]);
+        bl_chains_x.splice(bl.index2, 1);
+        bl_chainids_x.splice(bl.index2, 1);
         bl_last_seg_keep = false;
         break;
       case 'chain_close':
-        bl_oldchains.push(bl_chains.splice(bl.index, 1)[0]);
-        bl_oldchainids.push(bl_chainids.splice(bl.index, 1)[0]);
+        setChainClosed(bl.closed);
+        bl_oldchains_x.push(bl_chains_x.splice(bl.index, 1)[0]);
+        bl_oldchainids_x.push(bl_chainids_x.splice(bl.index, 1)[0]);
         bl_last_seg_keep = false;
         break;
       case 'done':
@@ -1238,7 +1309,7 @@ function redraw(){
   }
   if (bl_phase === 4 || (bl_phase === 5 && bl_last_done)){
     ctx.beginPath();
-    bl_oldchains.forEach(function(segs){
+    bl_oldchains_c.forEach(function(segs){
       for (let i = 0; i < segs.length; i++) {
         segPath(segs[i], ctx, i !== 0);
       }
@@ -1248,24 +1319,28 @@ function redraw(){
     ctx.strokeStyle = '#7f7';
     ctx.lineWidth = 1;
     ctx.stroke();
-    bl_oldchains.forEach(function(ch, chi){
-      var totx = 0;
-      var toty = 0;
-      for (var i = 0; i < ch.length; i++){
-        var pt = segStart(ch[i]);
-        totx += pt[0];
-        toty += pt[1];
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#7f7';
-        ctx.fill();
-      }
-      labels.push({
-        txt: bl_oldchainids[chi],
-        x: totx / ch.length,
-        y: toty / ch.length
+    function drawOldChains(bl_oldchains, bl_oldchainids, color) {
+      bl_oldchains.forEach(function(ch, chi){
+        var totx = 0;
+        var toty = 0;
+        for (var i = 0; i < ch.length; i++){
+          var pt = segStart(ch[i]);
+          totx += pt[0];
+          toty += pt[1];
+          ctx.beginPath();
+          ctx.arc(pt[0], pt[1], 3, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+        }
+        labels.push({
+          txt: bl_oldchainids_c[chi],
+          x: totx / ch.length,
+          y: toty / ch.length
+        });
       });
-    });
+    }
+    drawOldChains(bl_oldchains_o, bl_oldchainids_o, '#777');
+    drawOldChains(bl_oldchains_c, bl_oldchainids_c, '#7f7');
 
     function drawarrow(seg, rad){
       var pt1 = segStart(seg);
@@ -1292,55 +1367,63 @@ function redraw(){
       );
     }
 
-    bl_chains.forEach(function(ch, chi){
-      var rad = 3;
-      for (var i = 0; i < ch.length; i++){
-        const seg = ch[i];
-        var pt1 = segStart(seg);
-        var pt2 = segEnd(seg);
-        drawarrow(seg, rad);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = '#070';
-        ctx.stroke();
+    function drawChains(bl_chains, bl_chainids, color) {
+      bl_chains.forEach(function(ch, chi){
+        var rad = 3;
+        for (var i = 0; i < ch.length; i++){
+          const seg = ch[i];
+          var pt1 = segStart(seg);
+          var pt2 = segEnd(seg);
+          drawarrow(seg, rad);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = color;
+          ctx.stroke();
 
-        ctx.beginPath();
-        ctx.arc(pt1[0], pt1[1], rad, 0, Math.PI * 2);
-        ctx.fillStyle = '#070';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(pt2[0], pt2[1], rad, 0, Math.PI * 2);
-        ctx.fillStyle = '#070';
-        ctx.fill();
+          ctx.beginPath();
+          ctx.arc(pt1[0], pt1[1], rad, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(pt2[0], pt2[1], rad, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
 
-        labels.push({
-          txt: bl_chainids[chi],
-          x: (pt1[0] + pt2[0]) / 2,
-          y: (pt1[1] + pt2[1]) / 2
-        });
-      }
-    });
+          labels.push({
+            txt: bl_chainids[chi],
+            x: (pt1[0] + pt2[0]) / 2,
+            y: (pt1[1] + pt2[1]) / 2
+          });
+        }
+      });
+    }
+    drawChains(bl_chains_o, bl_chainids_o, '#777');
+    drawChains(bl_chains_c, bl_chainids_c, '#070');
 
     if (bl_last_seg_keep){
       var pt1 = segStart(bl_last_seg_keep.seg);
       var pt2 = segEnd(bl_last_seg_keep.seg);
+      const color = bl_last_seg_keep.closed ? '#0f0' : '#aaa';
       ctx.beginPath();
       drawarrow(bl_last_seg_keep.seg, 3.5);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = '#0f0';
+      ctx.strokeStyle = color;
       ctx.stroke();
 
       ctx.beginPath();
       ctx.arc(pt1[0], pt1[1], 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#0f0';
+      ctx.fillStyle = color;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(pt2[0], pt2[1], 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#0f0';
+      ctx.fillStyle = color;
       ctx.fill();
 
       if (bl_last_seg_keep_match !== false){
         labels.push({
-          txt: bl_chainids[bl_last_seg_keep_match],
+          txt:
+            bl_last_seg_keep_match.c
+              ? bl_chainids_c[bl_last_seg_keep_match.i]
+              : bl_chainids_o[bl_last_seg_keep_match.i],
           x: (pt1[0] + pt2[0]) / 2,
           y: (pt1[1] + pt2[1]) / 2
         });
@@ -1369,30 +1452,38 @@ function redraw(){
     }
   }
 
-  let poly1, poly2;
+
+  let regions1, regions2;
+  let inverted1 = false, inverted2 = false;
+  let open1 = [], open2 = [];
   if ('poly1' in demo) {
-    poly1 = demo.poly1;
-    poly2 = demo.poly2;
+    regions1 = demo.poly1.regions;
+    inverted1 = demo.poly1.inverted;
+    regions2 = demo.poly2.regions;
+    inverted2 = demo.poly2.inverted;
   } else {
-    poly1 = { regions: demo.shape1, inverted: false };
-    poly2 = { regions: demo.shape2, inverted: false };
+    regions1 = demo.shape1;
+    regions2 = demo.shape2;
+    open1 = demo.shape1Open || [];
+    open2 = demo.shape2Open || [];
   }
-  ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-  polyFill(poly1, [0, 0], [cnvWidth, cnvHeight / 2], cnvHeight / 2);
-  ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
-  polyFill(poly2, [0, 0], [cnvWidth, cnvHeight / 2], cnvHeight / 2);
-
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = '#f00';
-  polyStroke(poly1, cnvHeight / 2);
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = '#00f';
-  polyStroke(poly2, cnvHeight / 2);
-
-  ctx.fillStyle = '#f00';
-  drawVerts(poly1, cnvHeight / 2);
-  ctx.fillStyle = '#00f';
-  drawVerts(poly2, cnvHeight / 2);
+  drawPolys([{
+    regions: regions1,
+    inverted: inverted1,
+    open: open1,
+    fill: 'rgba(255, 0, 0, 0.2)',
+    stroke: '#f00',
+    invertRect: [[0, 0], [cnvWidth, cnvHeight / 2]],
+    offset: cnvHeight / 2
+  }, {
+    regions: regions2,
+    inverted: inverted2,
+    open: open2,
+    fill: 'rgba(0, 0, 255, 0.2)',
+    stroke: '#00f',
+    invertRect: [[0, 0], [cnvWidth, cnvHeight / 2]],
+    offset: cnvHeight / 2
+  }]);
 
   // draw labels
   //*
@@ -1417,13 +1508,15 @@ function redraw(){
   ctx.restore(); // */
 
   if (buildLogMax === 0){
-    ctx.fillStyle = 'rgba(0, 255, 0, 0.7)';
-    ctx.strokeStyle = '#070';
-    ctx.lineWidth = 1;
-    polyFill(clipResult.result, [0, 0], [cnvWidth, cnvHeight / 2], 0);
-    polyStroke(clipResult.result, 0);
-    ctx.fillStyle = '#070';
-    drawVerts(clipResult.result, 0);
+    drawPolys([{
+      regions: clipResult.result.regions,
+      inverted: clipResult.result.inverted,
+      open: clipResult.result.open || [],
+      fill: 'rgba(0, 255, 0, 0.7)',
+      stroke: '#070',
+      invertRect: [[0, 0], [cnvWidth, cnvHeight / 2]],
+      offset: 0
+    }]);
   }
 
   ctx.save();

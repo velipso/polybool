@@ -11,27 +11,15 @@ import {
   type Geometry,
   GeometryEpsilon,
 } from "./Geometry";
-import { type SegmentBool, Intersecter } from "./Intersecter";
-import { SegmentSelector } from "./SegmentSelector";
-import SegmentChainer, { type IPolyBoolReceiver } from "./SegmentChainer";
-import { Shape, ShapeCombined } from "./Shape";
+import { Shape, type ShapeCombined } from "./Shape";
 import BuildLog from "./BuildLog";
 export * from "./Segment";
-
-export {
-  type Vec2,
-  type Vec6,
-  Geometry,
-  GeometryEpsilon,
-  type SegmentBool,
-  Intersecter,
-  SegmentSelector,
-  SegmentChainer,
-  type IPolyBoolReceiver,
-  Shape,
-  ShapeCombined,
-  BuildLog,
-};
+export * from "./Geometry";
+export * from "./Intersecter";
+export * from "./SegmentSelector";
+export * from "./SegmentChainer";
+export * from "./Shape";
+export * from "./BuildLog";
 
 export interface Polygon {
   regions: Array<Array<Vec2 | Vec6>>;
@@ -62,7 +50,7 @@ export class PolyBool {
   }
 
   shape() {
-    return new Shape(null, this.geo, this.log);
+    return new Shape(this.geo, null, this.log);
   }
 
   buildLog(enable: boolean) {

@@ -11,6 +11,7 @@ import {
   lerpVec2,
   boundingBoxesIntersect,
 } from "./Geometry";
+import { type IPolyBoolReceiver } from "./SegmentChainer";
 
 export interface SegmentTValuePairs {
   kind: "tValuePairs";
@@ -21,19 +22,6 @@ export interface SegmentTRangePairs {
   kind: "tRangePairs";
   tStart: Vec2; // [seg1TStart, seg2TStart]
   tEnd: Vec2; // [seg1TEnd, seg2TEnd]
-}
-
-export interface SegmentDrawCtx {
-  moveTo: (x: number, y: number) => void;
-  lineTo: (x: number, y: number) => void;
-  bezierCurveTo: (
-    c1x: number,
-    c1y: number,
-    c2x: number,
-    c2y: number,
-    x: number,
-    y: number,
-  ) => void;
 }
 
 export class SegmentTValuesBuilder {
@@ -123,17 +111,16 @@ export abstract class SegmentBase<T> {
   abstract isEqual(other: T): boolean;
   abstract start(): Vec2;
   abstract start2(): Vec2;
+  abstract end2(): Vec2;
   abstract end(): Vec2;
   abstract setStart(p: Vec2): void;
   abstract setEnd(p: Vec2): void;
   abstract point(t: number): Vec2;
-  abstract tangentStart(): number; // degrees
-  abstract tangentEnd(): number; // degrees
   abstract split(t: number[]): T[];
   abstract reverse(): T;
   abstract boundingBox(): [Vec2, Vec2];
   abstract pointOn(p: Vec2): boolean;
-  abstract draw(ctx: SegmentDrawCtx): void;
+  abstract draw<TRecv extends IPolyBoolReceiver>(ctx: TRecv): TRecv;
 }
 
 export class SegmentLine extends SegmentBase<SegmentLine> {
@@ -167,6 +154,10 @@ export class SegmentLine extends SegmentBase<SegmentLine> {
     return this.p1;
   }
 
+  end2() {
+    return this.p0;
+  }
+
   end() {
     return this.p1;
   }
@@ -190,18 +181,6 @@ export class SegmentLine extends SegmentBase<SegmentLine> {
     }
 
     return [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t];
-  }
-
-  tangentStart() {
-    const p0 = this.p0;
-    const p1 = this.p1;
-    return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
-  }
-
-  tangentEnd() {
-    const p0 = this.p0;
-    const p1 = this.p1;
-    return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
   }
 
   split(ts: number[]): SegmentLine[] {
@@ -236,11 +215,12 @@ export class SegmentLine extends SegmentBase<SegmentLine> {
     return this.geo.isCollinear(p, this.p0, this.p1);
   }
 
-  draw(ctx: SegmentDrawCtx) {
+  draw<TRecv extends IPolyBoolReceiver>(ctx: TRecv): TRecv {
     const p0 = this.p0;
     const p1 = this.p1;
     ctx.moveTo(p0[0], p0[1]);
     ctx.lineTo(p1[0], p1[1]);
+    return ctx;
   }
 }
 
@@ -281,6 +261,10 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
     return this.p1;
   }
 
+  end2() {
+    return this.p2;
+  }
+
   end() {
     return this.p3;
   }
@@ -316,18 +300,6 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
       p0[0] * t0 + p1[0] * t1 + p2[0] * t2 + p3[0] * t3,
       p0[1] * t0 + p1[1] * t1 + p2[1] * t2 + p3[1] * t3,
     ];
-  }
-
-  tangentStart() {
-    const p0 = this.p0;
-    const p1 = this.p1;
-    return this.geo.atan2deg(p1[1] - p0[1], p1[0] - p0[0]);
-  }
-
-  tangentEnd() {
-    const p2 = this.p2;
-    const p3 = this.p3;
-    return this.geo.atan2deg(p3[1] - p2[1], p3[0] - p2[0]);
   }
 
   split(ts: number[]): SegmentCurve[] {
@@ -551,13 +523,14 @@ export class SegmentCurve extends SegmentBase<SegmentCurve> {
     return null;
   }
 
-  draw(ctx: SegmentDrawCtx) {
+  draw<TRecv extends IPolyBoolReceiver>(ctx: TRecv): TRecv {
     const p0 = this.p0;
     const p1 = this.p1;
     const p2 = this.p2;
     const p3 = this.p3;
     ctx.moveTo(p0[0], p0[1]);
     ctx.bezierCurveTo(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1]);
+    return ctx;
   }
 }
 

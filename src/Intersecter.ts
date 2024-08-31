@@ -30,10 +30,12 @@ export class SegmentBoolBase<T> {
   data: T;
   myFill: SegmentBoolFill;
   otherFill: SegmentBoolFill | null = null;
+  closed: boolean;
 
   constructor(
     data: T,
     fill: SegmentBoolFill | null = null,
+    closed = false,
     log: BuildLog | null = null,
   ) {
     this.id = log?.segmentId() ?? -1;
@@ -42,6 +44,7 @@ export class SegmentBoolBase<T> {
       above: fill?.above ?? null,
       below: fill?.below ?? null,
     };
+    this.closed = closed;
   }
 }
 
@@ -55,9 +58,9 @@ export function copySegmentBool(
   log: BuildLog | null,
 ): SegmentBool {
   if (seg instanceof SegmentBoolLine) {
-    return new SegmentBoolLine(seg.data, seg.myFill, log);
+    return new SegmentBoolLine(seg.data, seg.myFill, seg.closed, log);
   } else if (seg instanceof SegmentBoolCurve) {
-    return new SegmentBoolCurve(seg.data, seg.myFill, log);
+    return new SegmentBoolCurve(seg.data, seg.myFill, seg.closed, log);
   }
   throw new Error("PolyBool: Unknown SegmentBool in copySegmentBool");
 }
@@ -138,6 +141,7 @@ export class Intersecter {
   private readonly events = new ListBool<EventBool>();
   private readonly status = new ListBool<EventBool>();
   private readonly log: BuildLog | null;
+  private currentPath: SegmentBool[] = [];
 
   constructor(
     selfIntersection: boolean,
@@ -212,9 +216,9 @@ export class Intersecter {
 
     const ns =
       right instanceof SegmentLine
-        ? new SegmentBoolLine(right, ev.seg.myFill, this.log)
+        ? new SegmentBoolLine(right, ev.seg.myFill, ev.seg.closed, this.log)
         : right instanceof SegmentCurve
-          ? new SegmentBoolCurve(right, ev.seg.myFill, this.log)
+          ? new SegmentBoolCurve(right, ev.seg.myFill, ev.seg.closed, this.log)
           : null;
     if (!ns) {
       throw new Error("PolyBool: Unknown segment data in divideEvent");
@@ -228,6 +232,16 @@ export class Intersecter {
     ev.other.p = p;
     this.addEvent(ev.other);
     return this.addSegment(ns, ev.primary);
+  }
+
+  beginPath() {
+    this.currentPath = [];
+  }
+
+  closePath() {
+    for (const seg of this.currentPath) {
+      seg.closed = true;
+    }
   }
 
   addSegment(seg: SegmentBool, primary: boolean) {
@@ -246,14 +260,14 @@ export class Intersecter {
       // points are equal, so we have a zero-length segment
       return; // skip it
     }
-    this.addSegment(
-      new SegmentBoolLine(
-        new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo),
-        null,
-        this.log,
-      ),
-      primary,
+    const seg = new SegmentBoolLine(
+      new SegmentLine(f < 0 ? from : to, f < 0 ? to : from, this.geo),
+      null,
+      false,
+      this.log,
     );
+    this.currentPath.push(seg);
+    this.addSegment(seg, primary);
   }
 
   addCurve(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2, primary = true) {
@@ -270,39 +284,15 @@ export class Intersecter {
       if (line) {
         this.addLine(line.p0, line.p1, primary);
       } else {
-        this.addSegment(
-          new SegmentBoolCurve(f < 0 ? curve : curve.reverse(), null, this.log),
-          primary,
-        );
-      }
-    }
-  }
-
-  addRegion(region: Vec2[]) {
-    // regions are a list of points:
-    //  [ [0, 0], [100, 0], [50, 100] ]
-    // you can add multiple regions before running calculate
-    // regions are a list of points:
-    //  [ [0, 0], [100, 0], [50, 100] ]
-    // you can add multiple regions before running calculate
-    let p1: Vec2;
-    let p2 = region[region.length - 1];
-    for (let i = 0; i < region.length; i++) {
-      p1 = p2;
-      p2 = region[i];
-      const f = this.geo.compareVec2(p1, p2);
-      if (f === 0) {
-        // points are equal, so we have a zero-length segment
-        continue; // skip it
-      }
-      this.addSegment(
-        new SegmentBoolLine(
-          new SegmentLine(f < 0 ? p1 : p2, f < 0 ? p2 : p1, this.geo),
+        const seg = new SegmentBoolCurve(
+          f < 0 ? curve : curve.reverse(),
           null,
+          false,
           this.log,
-        ),
-        true,
-      );
+        );
+        this.currentPath.push(seg);
+        this.addSegment(seg, primary);
+      }
     }
   }
 
@@ -552,7 +542,7 @@ export class Intersecter {
           if (this.selfIntersection) {
             let toggle: boolean; // are we a toggling edge?
             if (ev.seg.myFill.below === null) {
-              toggle = true;
+              toggle = ev.seg.closed;
             } else {
               toggle = ev.seg.myFill.above !== ev.seg.myFill.below;
             }
@@ -592,9 +582,8 @@ export class Intersecter {
         if (this.selfIntersection) {
           let toggle: boolean; // are we a toggling edge?
           if (ev.seg.myFill.below === null) {
-            // if we are a new segment...
-            // then we toggle
-            toggle = true;
+            // if we are new then we toggle if we're part of a closed path
+            toggle = ev.seg.closed;
           } else {
             // we are a segment that has previous knowledge from a division
             // calculate toggle

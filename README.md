@@ -383,6 +383,10 @@ combined together, operated on, and output to a _receiver_.
 The receiver is an object with `beginPath`, `moveTo`, `lineTo`, `bezierCurveTo`, and `closePath`
 defined, and those methods are called in order to output the result.
 
+Unlike the other APIs, the Instructional API supports _open paths_, which can be used by skipping
+the call to `closePath` at the end. This could be useful for intersecting a rectangle with a
+line segment, for example.
+
 ```typescript
 export interface IPolyBoolReceiver {
   beginPath: () => void;
@@ -418,7 +422,8 @@ const shape = polybool.shape()
   .closePath();
 ```
 
-Note that shapes can have multiple regions by calling `beginPath`/`closePath` more than once.
+Note that shapes can have multiple regions by calling `beginPath` more than once.  Shapes support
+open and closed paths, so calling `closePath` is required if the path is filled.
 
 Shapes can also have bezier curves by calling `bezierCurveTo(...)` as well, but support for curves
 is still experimental and unstable.
