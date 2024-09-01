@@ -1830,6 +1830,8 @@ function segmentsToReceiver(segments, geo, receiver) {
 class Shape {
     constructor(geo, segments = null, log = null) {
         this.pathState = { kind: "beginPath" };
+        this.saveStack = [];
+        this.matrix = [1, 0, 0, 1, 0, 0];
         this.geo = geo;
         this.log = log;
         if (segments) {
@@ -1841,6 +1843,166 @@ class Shape {
                 selfIntersect: new Intersecter(true, this.geo, this.log),
             };
         }
+    }
+    setTransform(a, b, c, d, e, f) {
+        if (this.resultState.state !== "new") {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        this.matrix = [a, b, c, d, e, f];
+        return this;
+    }
+    resetTransform() {
+        this.matrix = [1, 0, 0, 1, 0, 0];
+        return this;
+    }
+    getTransform() {
+        if (this.resultState.state !== "new") {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        const [a, b, c, d, e, f] = this.matrix;
+        return { a, b, c, d, e, f };
+    }
+    transform(a, b, c, d, e, f) {
+        const [a0, b0, c0, d0, e0, f0] = this.matrix;
+        this.matrix = [
+            a0 * a + c0 * b,
+            b0 * a + d0 * b,
+            a0 * c + c0 * d,
+            b0 * c + d0 * d,
+            a0 * e + c0 * f + e0,
+            b0 * e + d0 * f + f0,
+        ];
+        return this;
+    }
+    rotate(angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const [a0, b0, c0, d0, e0, f0] = this.matrix;
+        this.matrix = [
+            a0 * cos + c0 * sin,
+            b0 * cos + d0 * sin,
+            c0 * cos - a0 * sin,
+            d0 * cos - b0 * sin,
+            e0,
+            f0,
+        ];
+        return this;
+    }
+    rotateDeg(angle) {
+        const ang = ((angle % 360) + 360) % 360;
+        if (ang === 0) {
+            return this;
+        }
+        let cos = 0;
+        let sin = 0;
+        if (ang === 90) {
+            sin = 1;
+        }
+        else if (ang === 180) {
+            cos = -1;
+        }
+        else if (ang === 270) {
+            sin = -1;
+        }
+        else if (ang === 45) {
+            cos = sin = Math.SQRT1_2;
+        }
+        else if (ang === 135) {
+            sin = Math.SQRT1_2;
+            cos = -Math.SQRT1_2;
+        }
+        else if (ang === 225) {
+            cos = sin = -Math.SQRT1_2;
+        }
+        else if (ang === 315) {
+            cos = Math.SQRT1_2;
+            sin = -Math.SQRT1_2;
+        }
+        else if (ang === 30) {
+            cos = Math.sqrt(3) / 2;
+            sin = 0.5;
+        }
+        else if (ang === 60) {
+            cos = 0.5;
+            sin = Math.sqrt(3) / 2;
+        }
+        else if (ang === 120) {
+            cos = -0.5;
+            sin = Math.sqrt(3) / 2;
+        }
+        else if (ang === 150) {
+            cos = -Math.sqrt(3) / 2;
+            sin = 0.5;
+        }
+        else if (ang === 210) {
+            cos = -Math.sqrt(3) / 2;
+            sin = -0.5;
+        }
+        else if (ang === 240) {
+            cos = -0.5;
+            sin = -Math.sqrt(3) / 2;
+        }
+        else if (ang === 300) {
+            cos = 0.5;
+            sin = -Math.sqrt(3) / 2;
+        }
+        else if (ang === 330) {
+            cos = Math.sqrt(3) / 2;
+            sin = -0.5;
+        }
+        else {
+            const rad = (Math.PI * ang) / 180;
+            cos = Math.cos(rad);
+            sin = Math.sin(rad);
+        }
+        const [a0, b0, c0, d0, e0, f0] = this.matrix;
+        this.matrix = [
+            a0 * cos + c0 * sin,
+            b0 * cos + d0 * sin,
+            c0 * cos - a0 * sin,
+            d0 * cos - b0 * sin,
+            e0,
+            f0,
+        ];
+        return this;
+    }
+    scale(sx, sy) {
+        const [a0, b0, c0, d0, e0, f0] = this.matrix;
+        this.matrix = [a0 * sx, b0 * sx, c0 * sy, d0 * sy, e0, f0];
+        return this;
+    }
+    translate(tx, ty) {
+        const [a0, b0, c0, d0, e0, f0] = this.matrix;
+        this.matrix = [
+            a0,
+            b0,
+            c0,
+            d0,
+            a0 * tx + c0 * ty + e0,
+            b0 * tx + d0 * ty + f0,
+        ];
+        return this;
+    }
+    save() {
+        if (this.resultState.state !== "new") {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        this.saveStack.push({ matrix: this.matrix });
+        return this;
+    }
+    restore() {
+        if (this.resultState.state !== "new") {
+            throw new Error("PolyBool: Cannot change shape after using it in an operation");
+        }
+        const s = this.saveStack.pop();
+        if (s) {
+            this.matrix = s.matrix;
+        }
+        return this;
+    }
+    transformPoint(x, y) {
+        const [a, b, c, d, e, f] = this.matrix;
+        return [a * x + c * y + e, b * x + d * y + f];
     }
     beginPath() {
         if (this.resultState.state !== "new") {
@@ -1856,7 +2018,7 @@ class Shape {
         if (this.pathState.kind !== "beginPath") {
             this.beginPath();
         }
-        const current = [x, y];
+        const current = this.transformPoint(x, y);
         this.pathState = {
             kind: "moveTo",
             start: current,
@@ -1871,7 +2033,7 @@ class Shape {
         if (this.pathState.kind !== "moveTo") {
             throw new Error("PolyBool: Must call moveTo prior to calling lineTo");
         }
-        const current = [x, y];
+        const current = this.transformPoint(x, y);
         this.resultState.selfIntersect.addLine(this.pathState.current, current);
         this.pathState.current = current;
         return this;
@@ -1883,8 +2045,8 @@ class Shape {
         if (this.pathState.kind !== "moveTo") {
             throw new Error("PolyBool: Must call moveTo prior to calling bezierCurveTo");
         }
-        const current = [x, y];
-        this.resultState.selfIntersect.addCurve(this.pathState.current, [cp1x, cp1y], [cp2x, cp2y], current);
+        const current = this.transformPoint(x, y);
+        this.resultState.selfIntersect.addCurve(this.pathState.current, this.transformPoint(cp1x, cp1y), this.transformPoint(cp2x, cp2y), current);
         this.pathState.current = current;
         return this;
     }
@@ -1895,7 +2057,8 @@ class Shape {
         // close with a line if needed
         if (this.pathState.kind === "moveTo" &&
             !this.geo.isEqualVec2(this.pathState.start, this.pathState.current)) {
-            this.lineTo(this.pathState.start[0], this.pathState.start[1]);
+            this.resultState.selfIntersect.addLine(this.pathState.current, this.pathState.start);
+            this.pathState.current = this.pathState.start;
         }
         this.resultState.selfIntersect.closePath();
         return this.endPath();

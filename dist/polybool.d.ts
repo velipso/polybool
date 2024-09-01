@@ -239,7 +239,27 @@ declare class Shape {
     private readonly log;
     private pathState;
     private resultState;
+    private readonly saveStack;
+    private matrix;
     constructor(geo: Geometry, segments?: SegmentBool[] | null, log?: BuildLog | null);
+    setTransform(a: number, b: number, c: number, d: number, e: number, f: number): this;
+    resetTransform(): this;
+    getTransform(): {
+        a: number;
+        b: number;
+        c: number;
+        d: number;
+        e: number;
+        f: number;
+    };
+    transform(a: number, b: number, c: number, d: number, e: number, f: number): this;
+    rotate(angle: number): this;
+    rotateDeg(angle: number): this;
+    scale(sx: number, sy: number): this;
+    translate(tx: number, ty: number): this;
+    save(): this;
+    restore(): this;
+    transformPoint(x: number, y: number): Vec2;
     beginPath(): this;
     moveTo(x: number, y: number): this;
     lineTo(x: number, y: number): this;

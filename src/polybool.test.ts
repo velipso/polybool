@@ -43,6 +43,41 @@ const curve1 = {
   inverted: false
 };
 
+class Receiver {
+  log: any[] = [];
+
+  beginPath() {
+    this.log.push('beginPath');
+  }
+
+  moveTo(x: number, y: number) {
+    this.log.push('moveTo', x, y);
+  }
+
+  lineTo(x: number, y: number) {
+    this.log.push('lineTo', x, y);
+  }
+
+  bezierCurveTo(
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ) {
+    this.log.push('bezierCurveTo', cp1x, cp1y, cp2x, cp2y, x, y);
+  }
+
+  closePath() {
+    this.log.push('closePath');
+  }
+
+  done() {
+    return this.log;
+  }
+}
+
 const tests: { name: string, func(): void }[] = [
   {
     name: 'basic intersection',
@@ -99,23 +134,7 @@ const tests: { name: string, func(): void }[] = [
   {
     name: 'example',
     func: () => {
-      const log: any[] = [];
-      const receiver = {
-        beginPath: () => { log.push('beginPath'); },
-        moveTo: (x: number, y: number) => { log.push('moveTo', x, y); },
-        lineTo: (x: number, y: number) => { log.push('lineTo', x, y); },
-        bezierCurveTo: (
-          cp1x: number,
-          cp1y: number,
-          cp2x: number,
-          cp2y: number,
-          x: number,
-          y: number,
-        ) => { log.push('bezierCurveTo', cp1x, cp1y, cp2x, cp2y, x, y); },
-        closePath: () => { log.push('closePath'); }
-      }
-
-      polybool.shape()
+      const log = polybool.shape()
         .beginPath()
         .moveTo(50, 50)
         .lineTo(150, 150)
@@ -141,7 +160,8 @@ const tests: { name: string, func(): void }[] = [
             .closePath()
         )
         .intersect()
-        .output(receiver);
+        .output(new Receiver())
+        .done();
       assertEqual(log, [
         'beginPath',
         'moveTo', 110, 110,
@@ -165,6 +185,28 @@ const tests: { name: string, func(): void }[] = [
         'closePath',
       ]);
     }
+  },
+  {
+    name: 'transforms',
+    func: () => {
+      const log = polybool.shape()
+        .setTransform(3, 0, 0, 2, 100, 200)
+        .beginPath()
+        .moveTo(50, 50)
+        .lineTo(-10, 50)
+        .lineTo(10, 10)
+        .closePath()
+        .output(new Receiver())
+        .done();
+      assertEqual(log, [
+        'beginPath',
+        'moveTo', 250, 300,
+        'lineTo', 70, 300,
+        'lineTo', 130, 220,
+        'lineTo', 250, 300,
+        'closePath',
+      ]);
+    },
   }
 ];
 
