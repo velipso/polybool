@@ -354,8 +354,11 @@ export class Shape {
     return this.resultState.regions;
   }
 
-  output<T extends IPolyBoolReceiver>(receiver: T): T {
-    return segmentsToReceiver(this.segments(), this.geo, receiver);
+  output<T extends IPolyBoolReceiver>(
+    receiver: T,
+    matrix: Vec6 = [1, 0, 0, 1, 0, 0],
+  ): T {
+    return segmentsToReceiver(this.segments(), this.geo, receiver, matrix);
   }
 
   combine(shape: Shape) {

@@ -34,7 +34,7 @@ declare function joinLines(seg1: SegmentLine, seg2: SegmentLine, geo: Geometry):
 declare function joinCurves(seg1: SegmentCurve, seg2: SegmentCurve, geo: Geometry): SegmentCurve | false;
 declare function joinSegments(seg1: Segment | undefined, seg2: Segment | undefined, geo: Geometry): Segment | false;
 declare function SegmentChainer(segments: SegmentBool[], geo: Geometry, log: BuildLog | null): Segment[][];
-declare function segmentsToReceiver<T extends IPolyBoolReceiver>(segments: Segment[][], geo: Geometry, receiver: T): T;
+declare function segmentsToReceiver<T extends IPolyBoolReceiver>(segments: Segment[][], geo: Geometry, receiver: T, matrix: Vec6): T;
 
 interface SegmentTValuePairs {
     kind: "tValuePairs";
@@ -268,7 +268,7 @@ declare class Shape {
     endPath(): this;
     private selfIntersect;
     segments(): Segment[][];
-    output<T extends IPolyBoolReceiver>(receiver: T): T;
+    output<T extends IPolyBoolReceiver>(receiver: T, matrix?: Vec6): T;
     combine(shape: Shape): ShapeCombined;
 }
 declare class ShapeCombined {

@@ -1790,7 +1790,8 @@ function SegmentChainer(segments, geo, log) {
     }
     return regions;
 }
-function segmentsToReceiver(segments, geo, receiver) {
+function segmentsToReceiver(segments, geo, receiver, matrix) {
+    const [a, b, c, d, e, f] = matrix;
     for (const region of segments) {
         if (region.length <= 0) {
             continue;
@@ -1799,14 +1800,18 @@ function segmentsToReceiver(segments, geo, receiver) {
         for (let i = 0; i < region.length; i++) {
             const seg = region[i];
             if (i === 0) {
-                const p0 = seg.start();
-                receiver.moveTo(p0[0], p0[1]);
+                const [p0x, p0y] = seg.start();
+                receiver.moveTo(a * p0x + c * p0y + e, b * p0x + d * p0y + f);
             }
             if (seg instanceof SegmentLine) {
-                receiver.lineTo(seg.p1[0], seg.p1[1]);
+                const [p1x, p1y] = seg.p1;
+                receiver.lineTo(a * p1x + c * p1y + e, b * p1x + d * p1y + f);
             }
             else if (seg instanceof SegmentCurve) {
-                receiver.bezierCurveTo(seg.p1[0], seg.p1[1], seg.p2[0], seg.p2[1], seg.p3[0], seg.p3[1]);
+                const [p1x, p1y] = seg.p1;
+                const [p2x, p2y] = seg.p2;
+                const [p3x, p3y] = seg.p3;
+                receiver.bezierCurveTo(a * p1x + c * p1y + e, b * p1x + d * p1y + f, a * p2x + c * p2y + e, b * p2x + d * p2y + f, a * p3x + c * p3y + e, b * p3x + d * p3y + f);
             }
             else {
                 throw new Error("PolyBool: Unknown segment instance");
@@ -2090,8 +2095,8 @@ class Shape {
         }
         return this.resultState.regions;
     }
-    output(receiver) {
-        return segmentsToReceiver(this.segments(), this.geo, receiver);
+    output(receiver, matrix = [1, 0, 0, 1, 0, 0]) {
+        return segmentsToReceiver(this.segments(), this.geo, receiver, matrix);
     }
     combine(shape) {
         const int = new Intersecter(false, this.geo, this.log);
