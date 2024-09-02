@@ -126,6 +126,7 @@ export function SegmentChainer(
         segs: newChain,
         fill: !chains[index].fill,
       };
+      return newChain;
     };
 
     if (seg instanceof SegmentLine && geo.isEqualVec2(pt1, pt2)) {
@@ -244,34 +245,40 @@ export function SegmentChainer(
 
       // check for closed chain
       if (closed) {
-        const segS = chain[0];
-        const segE = chain[chain.length - 1];
-        if (chain.length > 0 && geo.isEqualVec2(segS.start(), segE.end())) {
+        let finalChain = chain;
+        let segS = finalChain[0];
+        let segE = finalChain[finalChain.length - 1];
+        if (
+          finalChain.length > 0 &&
+          geo.isEqualVec2(segS.start(), segE.end())
+        ) {
           // see if chain is clockwise
           let winding = 0;
-          let last = chain[0].start();
-          for (const seg of chain) {
+          let last = finalChain[0].start();
+          for (const seg of finalChain) {
             const here = seg.end();
             winding += here[1] * last[0] - here[0] * last[1];
             last = here;
           }
           // this assumes Cartesian coordinates (Y is positive going up)
           const isClockwise = winding < 0;
-          if (isClockwise !== fill) {
-            reverseChain(index);
+          if (isClockwise === fill) {
+            finalChain = reverseChain(index);
+            segS = finalChain[0];
+            segE = finalChain[finalChain.length - 1];
           }
 
           const newStart = joinSegments(segE, segS, geo);
           if (newStart) {
-            chain.pop();
-            chain[0] = newStart;
+            finalChain.pop();
+            finalChain[0] = newStart;
             log?.chainSimplifyClose(index, { seg: newStart, fill }, closed);
           }
 
           // we have a closed chain!
           log?.chainClose(index, closed);
           chains.splice(index, 1);
-          regions.push(chain);
+          regions.push(finalChain);
         }
       }
     } else {
