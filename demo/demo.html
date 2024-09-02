@@ -797,10 +797,16 @@ function drawPolys(polys) {
 }
 
 function segStart(seg) {
+  if ('seg' in seg) {
+    return segStart(seg.seg);
+  }
   return 'data' in seg ? seg.data.p0 : seg.p0;
 }
 
 function segEnd(seg) {
+  if ('seg' in seg) {
+    return segEnd(seg.seg);
+  }
   if ('data' in seg) {
     if ('p3' in seg.data) {
       return seg.data.p3;
@@ -816,6 +822,9 @@ function segEnd(seg) {
 function segPoint(seg, t) {
   if ('data' in seg) {
     return segPoint(seg.data, t);
+  }
+  if ('seg' in seg) {
+    return segPoint(seg.seg, t);
   }
   if ('p3' in seg) {
     const p0 = seg.p0;
@@ -856,7 +865,10 @@ function segPoint(seg, t) {
 
 function segPath(seg, ctx, skipMoveTo) {
   if ('data' in seg) {
-    return segPath(seg.data, ctx);
+    return segPath(seg.data, ctx, skipMoveTo);
+  }
+  if ('seg' in seg) {
+    return segPath(seg.seg, ctx, skipMoveTo);
   }
   if (!skipMoveTo) {
     ctx.moveTo(seg.p0[0], seg.p0[1]);
@@ -1061,7 +1073,7 @@ function redraw(){
         break;
       case 'chain_new':
         setChainClosed(bl.closed);
-        bl_chains_x.push([bl.seg]);
+        bl_chains_x.push([bl.sf]);
         bl_chainids_x.push(bl_nextchainid++);
         bl_last_seg_keep = false;
         break;
@@ -1069,48 +1081,49 @@ function redraw(){
         setChainClosed(bl.closed);
         const newChain = [];
         for (let i = 0; i < bl_chains_x[bl.index].length; i++) {
-          let seg = bl_chains_x[bl.index][i];
+          const sf = bl_chains_x[bl.index][i];
+          let seg = sf.seg;
           if ('p3' in seg) {
             seg = { p0: seg.p3, p1: seg.p2, p2: seg.p1, p3: seg.p0 };
           } else {
             seg = { p0: seg.p1, p1: seg.p0 };
           }
-          newChain.unshift(seg);
+          newChain.unshift({ seg, fill: !sf.fill });
         }
         bl_chains_x[bl.index] = newChain;
         break;
       }
       case 'chain_add_head':
         setChainClosed(bl.closed);
-        bl_chains_x[bl.index].unshift(bl.seg);
+        bl_chains_x[bl.index].unshift(bl.sf);
         bl_last_seg_keep = false;
         break;
       case 'chain_add_tail':
         setChainClosed(bl.closed);
-        bl_chains_x[bl.index].push(bl.seg);
+        bl_chains_x[bl.index].push(bl.sf);
         bl_last_seg_keep = false;
         break;
       case 'chain_simp_head':
         setChainClosed(bl.closed);
         bl_chains_x[bl.index].shift();
-        bl_chains_x[bl.index][0] = bl.seg;
+        bl_chains_x[bl.index][0] = bl.sf;
         break;
       case 'chain_simp_tail':
         setChainClosed(bl.closed);
         bl_chains_x[bl.index].pop();
-        bl_chains_x[bl.index][bl_chains_x[bl.index].length - 1] = bl.seg;
+        bl_chains_x[bl.index][bl_chains_x[bl.index].length - 1] = bl.sf;
         break;
       case 'chain_simp_close':
         setChainClosed(bl.closed);
         bl_chains_x[bl.index].pop();
         bl_chains_x[bl.index].shift();
-        bl_chains_x[bl.index].unshift(bl.seg);
+        bl_chains_x[bl.index].unshift(bl.sf);
         break;
       case 'chain_simp_join':
         setChainClosed(bl.closed);
         bl_chains_x[bl.index1].pop();
         bl_chains_x[bl.index2].shift();
-        bl_chains_x[bl.index1].push(bl.seg);
+        bl_chains_x[bl.index1].push(bl.sf);
         break;
       case 'chain_match':
         bl_last_seg_keep_match = { i: bl.index, c: bl.closed };
@@ -1387,17 +1400,33 @@ function redraw(){
       );
     }
 
-    function drawChains(bl_chains, bl_chainids, color) {
+    function drawChains(bl_chains, bl_chainids, color, fillFlagColor) {
       bl_chains.forEach(function(ch, chi){
         var rad = 3;
         for (var i = 0; i < ch.length; i++){
-          const seg = ch[i];
+          const seg = ch[i].seg;
           var pt1 = segStart(seg);
           var pt2 = segEnd(seg);
           drawarrow(seg, rad);
           ctx.lineWidth = 1;
           ctx.strokeStyle = color;
           ctx.stroke();
+
+          if (fillFlagColor) {
+            const m1 = segPoint(seg, 0.49);
+            const m2 = segPoint(seg, 0.51);
+            var ang = Math.atan2(m2[1] - m1[1], m2[0] - m1[0]) + Math.PI / 2;
+            const dist = ch[i].fill ? 6 : -6;
+            ctx.beginPath();
+            ctx.arc(
+              dist * Math.cos(ang) + (m1[0] + m2[0]) / 2,
+              dist * Math.sin(ang) + (m1[1] + m2[1]) / 2,
+              3,
+              0, Math.PI * 2
+            );
+            ctx.fillStyle = fillFlagColor;
+            ctx.fill();
+          }
 
           ctx.beginPath();
           ctx.arc(pt1[0], pt1[1], rad, 0, Math.PI * 2);
@@ -1416,15 +1445,15 @@ function redraw(){
         }
       });
     }
-    drawChains(bl_chains_o, bl_chainids_o, '#777');
-    drawChains(bl_chains_c, bl_chainids_c, '#070');
+    drawChains(bl_chains_o, bl_chainids_o, '#777', false);
+    drawChains(bl_chains_c, bl_chainids_c, '#070', '#060');
 
     if (bl_last_seg_keep){
-      var pt1 = segStart(bl_last_seg_keep.seg);
-      var pt2 = segEnd(bl_last_seg_keep.seg);
+      var pt1 = segStart(bl_last_seg_keep.sf.seg);
+      var pt2 = segEnd(bl_last_seg_keep.sf.seg);
       const color = bl_last_seg_keep.closed ? '#0f0' : '#aaa';
       ctx.beginPath();
-      drawarrow(bl_last_seg_keep.seg, 3.5);
+      drawarrow(bl_last_seg_keep.sf.seg, 3.5);
       ctx.lineWidth = 2;
       ctx.strokeStyle = color;
       ctx.stroke();

@@ -9,6 +9,11 @@ import { type SegmentBool } from "./Intersecter";
 import { type Vec2 } from "./Geometry";
 import { type Segment } from "./Segment";
 
+interface ISegFill {
+  seg: Segment;
+  fill: boolean;
+}
+
 export default class BuildLog {
   list: Array<{ type: string; data: unknown }> = [];
   nextSegmentId = 0;
@@ -84,12 +89,12 @@ export default class BuildLog {
     this.push("selected", { segs });
   }
 
-  chainStart(seg: Segment, closed: boolean) {
-    this.push("chain_start", { seg, closed });
+  chainStart(sf: ISegFill, closed: boolean) {
+    this.push("chain_start", { sf, closed });
   }
 
-  chainNew(seg: Segment, closed: boolean) {
-    this.push("chain_new", { seg, closed });
+  chainNew(sf: ISegFill, closed: boolean) {
+    this.push("chain_new", { sf, closed });
   }
 
   chainMatch(index: number, closed: boolean) {
@@ -100,33 +105,33 @@ export default class BuildLog {
     this.push("chain_close", { index, closed });
   }
 
-  chainAddHead(index: number, seg: Segment, closed: boolean) {
-    this.push("chain_add_head", { index, seg, closed });
+  chainAddHead(index: number, sf: ISegFill, closed: boolean) {
+    this.push("chain_add_head", { index, sf, closed });
   }
 
-  chainAddTail(index: number, seg: Segment, closed: boolean) {
-    this.push("chain_add_tail", { index, seg, closed });
+  chainAddTail(index: number, sf: ISegFill, closed: boolean) {
+    this.push("chain_add_tail", { index, sf, closed });
   }
 
-  chainSimplifyHead(index: number, seg: Segment, closed: boolean) {
-    this.push("chain_simp_head", { index, seg, closed });
+  chainSimplifyHead(index: number, sf: ISegFill, closed: boolean) {
+    this.push("chain_simp_head", { index, sf, closed });
   }
 
-  chainSimplifyTail(index: number, seg: Segment, closed: boolean) {
-    this.push("chain_simp_tail", { index, seg, closed });
+  chainSimplifyTail(index: number, sf: ISegFill, closed: boolean) {
+    this.push("chain_simp_tail", { index, sf, closed });
   }
 
-  chainSimplifyClose(index: number, seg: Segment, closed: boolean) {
-    this.push("chain_simp_close", { index, seg, closed });
+  chainSimplifyClose(index: number, sf: ISegFill, closed: boolean) {
+    this.push("chain_simp_close", { index, sf, closed });
   }
 
   chainSimplifyJoin(
     index1: number,
     index2: number,
-    seg: Segment,
+    sf: ISegFill,
     closed: boolean,
   ) {
-    this.push("chain_simp_join", { index1, index2, seg, closed });
+    this.push("chain_simp_join", { index1, index2, sf, closed });
   }
 
   chainConnect(index1: number, index2: number, closed: boolean) {

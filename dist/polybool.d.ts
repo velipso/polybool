@@ -12,7 +12,7 @@ declare abstract class Geometry {
     abstract compareVec2(a: Vec2, b: Vec2): number;
 }
 declare class GeometryEpsilon extends Geometry {
-    private readonly epsilon;
+    readonly epsilon: number;
     constructor(epsilon?: number);
     snap0(v: number): number;
     snap01(v: number): number;
@@ -197,6 +197,10 @@ declare class Intersecter {
     calculate(): SegmentBool[];
 }
 
+interface ISegFill {
+    seg: Segment;
+    fill: boolean;
+}
 declare class BuildLog {
     list: Array<{
         type: string;
@@ -218,16 +222,16 @@ declare class BuildLog {
     status(seg: SegmentBool, above: SegmentBool | false, below: SegmentBool | false): void;
     vert(x: number): void;
     selected(segs: SegmentBool[]): void;
-    chainStart(seg: Segment, closed: boolean): void;
-    chainNew(seg: Segment, closed: boolean): void;
+    chainStart(sf: ISegFill, closed: boolean): void;
+    chainNew(sf: ISegFill, closed: boolean): void;
     chainMatch(index: number, closed: boolean): void;
     chainClose(index: number, closed: boolean): void;
-    chainAddHead(index: number, seg: Segment, closed: boolean): void;
-    chainAddTail(index: number, seg: Segment, closed: boolean): void;
-    chainSimplifyHead(index: number, seg: Segment, closed: boolean): void;
-    chainSimplifyTail(index: number, seg: Segment, closed: boolean): void;
-    chainSimplifyClose(index: number, seg: Segment, closed: boolean): void;
-    chainSimplifyJoin(index1: number, index2: number, seg: Segment, closed: boolean): void;
+    chainAddHead(index: number, sf: ISegFill, closed: boolean): void;
+    chainAddTail(index: number, sf: ISegFill, closed: boolean): void;
+    chainSimplifyHead(index: number, sf: ISegFill, closed: boolean): void;
+    chainSimplifyTail(index: number, sf: ISegFill, closed: boolean): void;
+    chainSimplifyClose(index: number, sf: ISegFill, closed: boolean): void;
+    chainSimplifyJoin(index1: number, index2: number, sf: ISegFill, closed: boolean): void;
     chainConnect(index1: number, index2: number, closed: boolean): void;
     chainReverse(index: number, closed: boolean): void;
     chainJoin(index1: number, index2: number, closed: boolean): void;

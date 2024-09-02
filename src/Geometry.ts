@@ -40,7 +40,7 @@ export abstract class Geometry {
 }
 
 export class GeometryEpsilon extends Geometry {
-  private readonly epsilon: number;
+  readonly epsilon: number;
 
   constructor(epsilon = 0.0000000001) {
     super();

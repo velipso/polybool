@@ -12,12 +12,13 @@ Boolean operations on polygons (union, intersection, difference, xor).
 4. Uses formulas that take floating point irregularities into account (via
    configurable epsilon)
 5. Provides an API for constructing efficient sequences of operations
-6. Handles line segments (stable) and bezier cubic curves (experimental)
-7. TypeScript implementation
+6. Outputs exterior paths as counter-clockwise, and holes as clockwise (right-hand rule)
+7. Handles line segments (stable) and bezier cubic curves (experimental)
+8. TypeScript implementation
 
 # Resources
 
-* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.9/demo/demo.html)
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.10/demo/demo.html)
 * [Companion Tutorial](https://sean.fun/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
