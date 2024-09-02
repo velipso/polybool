@@ -986,11 +986,19 @@ class Intersecter {
             //
             // so grab seg1's second point (D) instead
             A = seg1.start2();
-            if (seg1 instanceof SegmentLine &&
-                seg2 instanceof SegmentLine &&
-                seg2.pointOn(A)) {
-                // oh... D is on the line too... so these are the same
-                return 0;
+            if (seg2.pointOn(A)) {
+                if (seg1 instanceof SegmentLine) {
+                    if (seg2 instanceof SegmentLine) {
+                        // oh... D is on the line too... so these are the same
+                        return 0;
+                    }
+                    if (seg2 instanceof SegmentCurve) {
+                        A = seg1.point(0.5); // TODO: ???
+                    }
+                }
+                if (seg1 instanceof SegmentCurve) {
+                    A = seg1.end();
+                }
             }
             if (seg2 instanceof SegmentCurve) {
                 if (this.geo.snap0(A[0] - C[0]) === 0 &&
