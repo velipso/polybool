@@ -140,7 +140,6 @@ const tests: { name: string, func(): void }[] = [
         .lineTo(150, 150)
         .lineTo(190, 50)
         .closePath()
-        .beginPath()
         .moveTo(130, 50)
         .lineTo(290, 150)
         .lineTo(290, 50)
@@ -152,7 +151,6 @@ const tests: { name: string, func(): void }[] = [
             .lineTo(110, 110)
             .lineTo(20, 20)
             .closePath()
-            .beginPath()
             .moveTo(130, 170)
             .lineTo(130, 20)
             .lineTo(260, 20)
@@ -169,14 +167,12 @@ const tests: { name: string, func(): void }[] = [
         'lineTo', 110, 50,
         'lineTo', 110, 110,
         'closePath',
-        'beginPath',
         'moveTo', 150, 150,
         'lineTo', 178, 80,
         'lineTo', 130, 50,
         'lineTo', 130, 130,
         'lineTo', 150, 150,
         'closePath',
-        'beginPath',
         'moveTo', 260, 131.25,
         'lineTo', 178, 80,
         'lineTo', 190, 50,

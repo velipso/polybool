@@ -263,6 +263,7 @@ declare class Shape {
     beginPath(): this;
     moveTo(x: number, y: number): this;
     lineTo(x: number, y: number): this;
+    rect(x: number, y: number, width: number, height: number): this;
     bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): this;
     closePath(): this;
     endPath(): this;

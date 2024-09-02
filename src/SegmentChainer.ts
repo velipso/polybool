@@ -370,11 +370,11 @@ export function segmentsToReceiver<T extends IPolyBoolReceiver>(
   matrix: Vec6,
 ): T {
   const [a, b, c, d, e, f] = matrix;
+  receiver.beginPath();
   for (const region of segments) {
     if (region.length <= 0) {
       continue;
     }
-    receiver.beginPath();
     for (let i = 0; i < region.length; i++) {
       const seg = region[i];
       if (i === 0) {

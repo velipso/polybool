@@ -17,7 +17,7 @@ Boolean operations on polygons (union, intersection, difference, xor).
 
 # Resources
 
-* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.6/demo/demo.html)
+* [Demo + Animation](https://unpkg.com/@velipso/polybool@2.0.7/demo/demo.html)
 * [Companion Tutorial](https://sean.fun/a/polygon-clipping-pt2)
 * Based somewhat on the F. Martinez (2008) algorithm:
   [Paper](http://www.cs.ucr.edu/~vbz/cs230papers/martinez_boolean.pdf),
@@ -129,7 +129,6 @@ const shape1 = polybool.shape()
   .lineTo(150, 150)
   .lineTo(190, 50)
   .closePath()
-  .beginPath()
   .moveTo(130, 50)
   .lineTo(290, 150)
   .lineTo(290, 50)
@@ -141,7 +140,6 @@ const shape2 = polybool.shape()
   .lineTo(110, 110)
   .lineTo(20, 20)
   .closePath()
-  .beginPath()
   .moveTo(130, 170)
   .lineTo(130, 20)
   .lineTo(260, 20)
@@ -179,14 +177,12 @@ shape1
 //   lineTo 110 50
 //   lineTo 110 110
 //   closePath
-//   beginPath
 //   moveTo 150 150
 //   lineTo 178 80
 //   lineTo 130 50
 //   lineTo 130 130
 //   lineTo 150 150
 //   closePath
-//   beginPath
 //   moveTo 260 131.25
 //   lineTo 178 80
 //   lineTo 190 50
@@ -415,14 +411,13 @@ const shape = polybool.shape()
   .lineTo(150, 150)
   .lineTo(190, 50)
   .closePath()
-  .beginPath()
   .moveTo(130, 50)
   .lineTo(290, 150)
   .lineTo(290, 50)
   .closePath();
 ```
 
-Note that shapes can have multiple regions by calling `beginPath` more than once.  Shapes support
+Note that shapes can have multiple regions by calling `moveTo` more than once.  Shapes support
 open and closed paths, so calling `closePath` is required if the path is filled.
 
 Shapes can also have bezier curves by calling `bezierCurveTo(...)` as well, but support for curves

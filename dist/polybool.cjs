@@ -1792,11 +1792,11 @@ function SegmentChainer(segments, geo, log) {
 }
 function segmentsToReceiver(segments, geo, receiver, matrix) {
     const [a, b, c, d, e, f] = matrix;
+    receiver.beginPath();
     for (const region of segments) {
         if (region.length <= 0) {
             continue;
         }
-        receiver.beginPath();
         for (let i = 0; i < region.length; i++) {
             const seg = region[i];
             if (i === 0) {
@@ -2042,6 +2042,14 @@ class Shape {
         this.resultState.selfIntersect.addLine(this.pathState.current, current);
         this.pathState.current = current;
         return this;
+    }
+    rect(x, y, width, height) {
+        return this.moveTo(x, y)
+            .lineTo(x + width, y)
+            .lineTo(x + width, y + height)
+            .lineTo(x, y + height)
+            .closePath()
+            .moveTo(x, y);
     }
     bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) {
         if (this.resultState.state !== "new") {

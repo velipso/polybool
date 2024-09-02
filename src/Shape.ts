@@ -272,6 +272,15 @@ export class Shape {
     return this;
   }
 
+  rect(x: number, y: number, width: number, height: number) {
+    return this.moveTo(x, y)
+      .lineTo(x + width, y)
+      .lineTo(x + width, y + height)
+      .lineTo(x, y + height)
+      .closePath()
+      .moveTo(x, y);
+  }
+
   bezierCurveTo(
     cp1x: number,
     cp1y: number,
