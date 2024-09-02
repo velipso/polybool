@@ -526,21 +526,33 @@ function buildLogPlay(){
 class Receiver {
   regions = [];
   open = [];
+  moved = false;
 
   beginPath() {
-    this.open.push(this.regions.length);
-    this.regions.push([]);
+  }
+
+  checkMoved() {
+    if (this.moved) {
+      this.regions[this.regions.length - 1].push(this.moved);
+      this.moved = false;
+    }
   }
 
   moveTo(x, y) {
-    this.regions[this.regions.length - 1].push([x, y]);
+    if (!this.moved) {
+      this.open.push(this.regions.length);
+      this.regions.push([]);
+    }
+    this.moved = [x, y];
   }
 
   lineTo(x, y) {
+    this.checkMoved();
     this.regions[this.regions.length - 1].push([x, y]);
   }
 
   bezierCurveTo(a, b, c, d, x, y) {
+    this.checkMoved();
     this.regions[this.regions.length - 1].push([a, b, c, d, x, y]);
   }
 
@@ -1048,7 +1060,7 @@ function redraw(){
       case 'chain_rev': {
         setChainClosed(bl.closed);
         const newChain = [];
-        for (let i = 0; i < bl_chains[bl.index].length; i++) {
+        for (let i = 0; i < bl_chains_x[bl.index].length; i++) {
           let seg = bl_chains_x[bl.index][i];
           if ('p3' in seg) {
             seg = { p0: seg.p3, p1: seg.p2, p2: seg.p1, p3: seg.p0 };

@@ -2265,8 +2265,8 @@ class PolyBool {
     }
     segments(poly) {
         const shape = this.shape();
+        shape.beginPath();
         for (const region of poly.regions) {
-            shape.beginPath();
             const lastPoint = region[region.length - 1];
             shape.moveTo(lastPoint[lastPoint.length - 2], lastPoint[lastPoint.length - 1]);
             for (const p of region) {
@@ -2348,10 +2348,10 @@ class PolyBool {
     polygon(segments) {
         const regions = [];
         const receiver = {
-            beginPath: () => {
+            beginPath: () => { },
+            moveTo: () => {
                 regions.push([]);
             },
-            moveTo: () => { },
             lineTo: (x, y) => {
                 regions[regions.length - 1].push([x, y]);
             },

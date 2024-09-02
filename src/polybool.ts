@@ -60,8 +60,8 @@ export class PolyBool {
 
   segments(poly: Polygon): Segments {
     const shape = this.shape();
+    shape.beginPath();
     for (const region of poly.regions) {
-      shape.beginPath();
       const lastPoint = region[region.length - 1];
       shape.moveTo(
         lastPoint[lastPoint.length - 2],
@@ -151,10 +151,10 @@ export class PolyBool {
   polygon(segments: Segments): Polygon {
     const regions: Array<Array<Vec2 | Vec6>> = [];
     const receiver = {
-      beginPath: () => {
+      beginPath: () => {},
+      moveTo: () => {
         regions.push([]);
       },
-      moveTo: () => {},
       lineTo: (x: number, y: number) => {
         regions[regions.length - 1].push([x, y]);
       },
