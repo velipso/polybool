@@ -33,6 +33,7 @@ Other kind souls have ported this library:
 * [.NET port by @idormenco](https://github.com/idormenco/PolyBool.Net)
 * [Flutter/Dart port by @mohammedX6](https://github.com/mohammedX6/poly_bool_dart)
 * [Python port by @KaivnD](https://github.com/KaivnD/pypolybool)
+* [Roblox (Luau/Typescript) port by @codyduong](https://github.com/codyduong/rbxts-polybool)
 * Please make a ticket if you'd like to be added here :-)
 
 # Installing
