@@ -181,16 +181,16 @@ export function SegmentChainer(
       if (chain.length > 0 && startMatch && endMatch) {
         const newStart = joinSegments(chain[chain.length - 1], chain[0], geo);
 
-      if (newStart != null) {
-        chain.pop();
-        chain[0] = newStart;
-        log?.chainSimplifyClose(index, newStart, closed);
-      }
+        if (newStart != null) {
+          chain.pop();
+          chain[0] = newStart;
+          log?.chainSimplifyClose(index, newStart, closed);
+        }
 
-      // we have a closed chain!
-      log?.chainClose(index, closed);
-      chains.splice(index, 1);
-      regions.push(chain);
+        // we have a closed chain!
+        log?.chainClose(index, closed);
+        chains.splice(index, 1);
+        regions.push(chain);
       }
     } else {
       // otherwise, we matched two chains, so we need to combine those chains together
