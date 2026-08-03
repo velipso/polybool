@@ -30,9 +30,9 @@ interface IPolyBoolReceiver {
     bezierCurveTo: (cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number) => void;
     closePath: () => void;
 }
-declare function joinLines(seg1: SegmentLine, seg2: SegmentLine, geo: Geometry): SegmentLine | false;
-declare function joinCurves(seg1: SegmentCurve, seg2: SegmentCurve, geo: Geometry): SegmentCurve | false;
-declare function joinSegments(seg1: Segment | undefined, seg2: Segment | undefined, geo: Geometry): Segment | false;
+declare function joinLines(seg1: SegmentLine, seg2: SegmentLine, geo: Geometry): SegmentLine | undefined;
+declare function joinCurves(seg1: SegmentCurve, seg2: SegmentCurve, geo: Geometry): SegmentCurve | undefined;
+declare function joinSegments(seg1: Segment | undefined, seg2: Segment | undefined, geo: Geometry): Segment | undefined;
 declare function SegmentChainer(segments: SegmentBool[], geo: Geometry, log: BuildLog | null): Segment[][];
 declare function segmentsToReceiver<T extends IPolyBoolReceiver>(segments: Segment[][], geo: Geometry, receiver: T, matrix: Vec6): T;
 
@@ -197,10 +197,6 @@ declare class Intersecter {
     calculate(): SegmentBool[];
 }
 
-interface ISegFill {
-    seg: Segment;
-    fill: boolean;
-}
 declare class BuildLog {
     list: Array<{
         type: string;
@@ -222,16 +218,16 @@ declare class BuildLog {
     status(seg: SegmentBool, above: SegmentBool | false, below: SegmentBool | false): void;
     vert(x: number): void;
     selected(segs: SegmentBool[]): void;
-    chainStart(sf: ISegFill, closed: boolean): void;
-    chainNew(sf: ISegFill, closed: boolean): void;
+    chainStart(seg: Segment, closed: boolean): void;
+    chainNew(seg: Segment, closed: boolean): void;
     chainMatch(index: number, closed: boolean): void;
     chainClose(index: number, closed: boolean): void;
-    chainAddHead(index: number, sf: ISegFill, closed: boolean): void;
-    chainAddTail(index: number, sf: ISegFill, closed: boolean): void;
-    chainSimplifyHead(index: number, sf: ISegFill, closed: boolean): void;
-    chainSimplifyTail(index: number, sf: ISegFill, closed: boolean): void;
-    chainSimplifyClose(index: number, sf: ISegFill, closed: boolean): void;
-    chainSimplifyJoin(index1: number, index2: number, sf: ISegFill, closed: boolean): void;
+    chainAddHead(index: number, seg: Segment, closed: boolean): void;
+    chainAddTail(index: number, seg: Segment, closed: boolean): void;
+    chainSimplifyHead(index: number, seg: Segment, closed: boolean): void;
+    chainSimplifyTail(index: number, seg: Segment, closed: boolean): void;
+    chainSimplifyClose(index: number, seg: Segment, closed: boolean): void;
+    chainSimplifyJoin(index1: number, index2: number, seg: Segment, closed: boolean): void;
     chainConnect(index1: number, index2: number, closed: boolean): void;
     chainReverse(index: number, closed: boolean): void;
     chainJoin(index1: number, index2: number, closed: boolean): void;

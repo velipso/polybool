@@ -86,9 +86,9 @@ const tests: { name: string, func(): void }[] = [
         polybool.intersect(triangle1, triangle2),
         {
           regions: [[
-            [10, 0],
+            [7.5, 5],
             [5, 0],
-            [7.5, 5]
+            [10, 0],
           ]],
           inverted: false
         }
@@ -120,11 +120,11 @@ const tests: { name: string, func(): void }[] = [
         polybool.union(box1, curve1),
         {
           regions: [[
-            [10, 0],
-            [10, -2.5, 7.5, -3.75, 5, -3.75],
-            [5, -5],
+            [0, 0],
             [0, -5],
-            [0, 0]
+            [5, -5],
+            [5, -3.75],
+            [7.5, -3.75, 10, -2.5, 10, 0],
           ]],
           inverted: false
         }
@@ -167,11 +167,11 @@ const tests: { name: string, func(): void }[] = [
         'lineTo', 110, 50,
         'lineTo', 110, 110,
         'closePath',
-        'moveTo', 150, 150,
-        'lineTo', 178, 80,
-        'lineTo', 130, 50,
-        'lineTo', 130, 130,
+        'moveTo', 178, 80,
         'lineTo', 150, 150,
+        'lineTo', 130, 130,
+        'lineTo', 130, 50,
+        'lineTo', 178, 80,
         'closePath',
         'moveTo', 260, 131.25,
         'lineTo', 178, 80,
