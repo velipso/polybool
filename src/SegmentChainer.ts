@@ -123,14 +123,12 @@ export function SegmentChainer(
 
     for (let i = 0; i < chains.length; i++) {
       const chain = chains[i];
-      const head = chain[0].start();
-      const tail = chain[chain.length - 1].end();
 
-      if (startMatch == null && geo.isEqualVec2(tail, pt1)) {
+      if (startMatch == null && geo.isEqualVec2(chain[chain.length - 1].end(), pt1)) {
         startMatch = i;
       }
 
-      if (endMatch == null && geo.isEqualVec2(head, pt2)) {
+      if (endMatch == null && geo.isEqualVec2(chain[0].start(), pt2)) {
         endMatch = i;
       }
 
