@@ -134,7 +134,7 @@ export function SegmentChainer(
         endMatch = i;
       }
 
-      if (startMatch && endMatch) {
+      if (startMatch != null && endMatch != null) {
         break;
       }
     }
